@@ -12,6 +12,7 @@ INTERNAL.md
 deploy.sh
 DEPLOYMENT.md
 RELEASE_NOTES_*.md
+REPOSITORY_POLICY.md
 
 # macOS
 .DS_Store

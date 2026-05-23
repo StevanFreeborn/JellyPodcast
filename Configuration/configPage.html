@@ -120,7 +120,7 @@
 
         <script type="text/javascript">
             var PodcastConfig = {
-                pluginUniqueId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+                pluginUniqueId: '677e8667-ef05-4d2a-88d0-3a920951ca8d'
             };
 
             document.getElementById('PodcastConfigPage').addEventListener('pageshow', function () {
@@ -261,25 +261,87 @@
                 nameContainer.appendChild(nameLabel);
                 nameContainer.appendChild(nameInput);
 
+                // Create advanced settings toggle
+                var advancedToggle = document.createElement('button');
+                advancedToggle.type = 'button';
+                advancedToggle.setAttribute('is', 'emby-button');
+                advancedToggle.setAttribute('class', 'raised');
+                advancedToggle.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em;';
+                var toggleSpan = document.createElement('span');
+                toggleSpan.textContent = '▼ Advanced Settings';
+                advancedToggle.appendChild(toggleSpan);
+
+                // Create advanced settings container (initially hidden)
+                var advancedContainer = document.createElement('div');
+                advancedContainer.className = 'advancedSettings';
+                advancedContainer.style.cssText = 'display: none; margin-top: 1em; padding: 1em; background: rgba(0,0,0,0.2); border-radius: 4px;';
+
+                // Per-feed auto cleanup checkbox
+                var feedCleanupCheckbox = document.createElement('div');
+                feedCleanupCheckbox.className = 'checkboxContainer';
+                var feedCleanupLabel = document.createElement('label');
+                var feedCleanupInput = document.createElement('input');
+                feedCleanupInput.type = 'checkbox';
+                feedCleanupInput.className = 'feedEnableAutoCleanup';
+                feedCleanupInput.setAttribute('is', 'emby-checkbox');
+                feedCleanupInput.checked = feed.EnableAutoCleanup === true;
+                var feedCleanupSpan = document.createElement('span');
+                feedCleanupSpan.textContent = 'Override Auto Cleanup (unchecked = use global setting)';
+                feedCleanupLabel.appendChild(feedCleanupInput);
+                feedCleanupLabel.appendChild(feedCleanupSpan);
+                feedCleanupCheckbox.appendChild(feedCleanupLabel);
+
+                // Per-feed retention days
+                var feedRetentionContainer = document.createElement('div');
+                feedRetentionContainer.className = 'inputContainer';
+                feedRetentionContainer.style.marginTop = '0.5em';
+                var feedRetentionLabel = document.createElement('label');
+                feedRetentionLabel.textContent = 'Days to Keep Episodes (leave empty = use global setting):';
+                var feedRetentionInput = document.createElement('input');
+                feedRetentionInput.type = 'number';
+                feedRetentionInput.className = 'feedDaysToKeepEpisodes';
+                feedRetentionInput.setAttribute('is', 'emby-input');
+                feedRetentionInput.min = '1';
+                feedRetentionInput.max = '365';
+                feedRetentionInput.value = feed.DaysToKeepEpisodes || '';
+                feedRetentionInput.placeholder = 'Use global setting';
+                feedRetentionContainer.appendChild(feedRetentionLabel);
+                feedRetentionContainer.appendChild(feedRetentionInput);
+
+                advancedContainer.appendChild(feedCleanupCheckbox);
+                advancedContainer.appendChild(feedRetentionContainer);
+
+                // Toggle advanced settings
+                advancedToggle.addEventListener('click', function () {
+                    var isVisible = advancedContainer.style.display !== 'none';
+                    advancedContainer.style.display = isVisible ? 'none' : 'block';
+                    toggleSpan.textContent = isVisible ? '▼ Advanced Settings' : '▲ Advanced Settings';
+                });
+
                 // Create remove button
                 var removeButton = document.createElement('button');
                 removeButton.type = 'button';
-                removeButton.className = 'removeFeedButton';
                 removeButton.setAttribute('is', 'emby-button');
-                removeButton.setAttribute('class', 'raised block');
+                removeButton.setAttribute('class', 'raised block removeFeedButton');
                 removeButton.style.backgroundColor = '#c00';
+                removeButton.style.marginTop = '1em';
                 var removeSpan = document.createElement('span');
                 removeSpan.textContent = 'Remove Feed';
                 removeButton.appendChild(removeSpan);
 
                 removeButton.addEventListener('click', function () {
-                    feedDiv.remove();
+                    var feedName = nameInput.value.trim() || urlInput.value.trim() || 'this feed';
+                    if (confirm('Are you sure you want to delete the feed "' + feedName + '"?\n\nThis will remove the feed from your configuration, but episode files will remain on disk until the next cleanup.')) {
+                        feedDiv.remove();
+                    }
                 });
 
                 // Append all elements
                 feedDiv.appendChild(checkboxContainer);
                 feedDiv.appendChild(urlContainer);
                 feedDiv.appendChild(nameContainer);
+                feedDiv.appendChild(advancedToggle);
+                feedDiv.appendChild(advancedContainer);
                 feedDiv.appendChild(removeButton);
 
                 container.appendChild(feedDiv);
@@ -292,11 +354,16 @@
                 feedRows.forEach(function (row) {
                     var url = row.querySelector('.feedUrl').value.trim();
                     if (url) {
+                        var daysValue = row.querySelector('.feedDaysToKeepEpisodes').value.trim();
+                        var enableAutoCleanup = row.querySelector('.feedEnableAutoCleanup').checked;
+
                         feeds.push({
                             Id: row.getAttribute('data-feed-id'),
                             Url: url,
                             CustomName: row.querySelector('.feedCustomName').value.trim(),
-                            Enabled: row.querySelector('.feedEnabled').checked
+                            Enabled: row.querySelector('.feedEnabled').checked,
+                            EnableAutoCleanup: enableAutoCleanup ? true : null,
+                            DaysToKeepEpisodes: daysValue ? parseInt(daysValue) : null
                         });
                     }
                 });

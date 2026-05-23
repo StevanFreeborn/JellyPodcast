@@ -75,4 +75,14 @@ public class PodcastFeed
     /// Gets or sets a value indicating whether this feed is enabled.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether auto cleanup is enabled for this feed (null = use global setting).
+    /// </summary>
+    public bool? EnableAutoCleanup { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of days to keep episodes for this feed (null = use global setting).
+    /// </summary>
+    public int? DaysToKeepEpisodes { get; set; }
 }

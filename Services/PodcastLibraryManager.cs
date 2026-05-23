@@ -74,12 +74,6 @@ public class PodcastLibraryManager
             }
         }
 
-        // Cleanup old episodes if enabled
-        if (config.EnableAutoCleanup)
-        {
-            CleanupOldEpisodes(libraryPath, config);
-        }
-
         _logger.LogInformation("Podcast library refresh completed");
     }
 
@@ -138,6 +132,14 @@ public class PodcastLibraryManager
         }
 
         _logger.LogInformation("Finished processing all episodes for {Podcast}", podcastName);
+
+        // Cleanup old episodes for this feed if enabled (per-feed or global)
+        var enableCleanup = feedConfig.EnableAutoCleanup ?? config.EnableAutoCleanup;
+        if (enableCleanup)
+        {
+            var daysToKeep = feedConfig.DaysToKeepEpisodes ?? config.DaysToKeepEpisodes;
+            CleanupOldEpisodesForFeed(podcastDir, podcastName, daysToKeep);
+        }
     }
 
     private async Task CreateEpisodeFilesAsync(
@@ -269,6 +271,62 @@ public class PodcastLibraryManager
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to download image from {Url}", imageUrl);
+        }
+    }
+
+    private void CleanupOldEpisodesForFeed(string podcastDir, string podcastName, int daysToKeep)
+    {
+        _logger.LogInformation("Starting cleanup of episodes older than {Days} days for {Podcast}", daysToKeep, podcastName);
+
+        var cutoffDate = DateTime.Now.AddDays(-daysToKeep);
+
+        try
+        {
+            if (!Directory.Exists(podcastDir))
+            {
+                return;
+            }
+
+            // Check season directories
+            foreach (var seasonDir in Directory.GetDirectories(podcastDir))
+            {
+                var files = Directory.GetFiles(seasonDir, "*.strm");
+                int deletedCount = 0;
+
+                foreach (var file in files)
+                {
+                    var fileInfo = new FileInfo(file);
+                    if (fileInfo.CreationTime < cutoffDate)
+                    {
+                        // Delete .strm, .nfo, .audiourl, and thumbnail files
+                        var basePath = Path.Combine(Path.GetDirectoryName(file)!, Path.GetFileNameWithoutExtension(file));
+
+                        DeleteFileIfExists(file);
+                        DeleteFileIfExists($"{basePath}.nfo");
+                        DeleteFileIfExists($"{basePath}.audiourl");
+                        DeleteFileIfExists($"{basePath}-thumb.jpg");
+
+                        deletedCount++;
+                        _logger.LogDebug("Deleted old episode: {File}", file);
+                    }
+                }
+
+                if (deletedCount > 0)
+                {
+                    _logger.LogInformation("Deleted {Count} old episodes from {Podcast}", deletedCount, podcastName);
+                }
+
+                // Remove empty season directories
+                if (!Directory.EnumerateFileSystemEntries(seasonDir).Any())
+                {
+                    Directory.Delete(seasonDir);
+                    _logger.LogDebug("Deleted empty season directory: {Dir}", seasonDir);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during cleanup for {Podcast}", podcastName);
         }
     }
 

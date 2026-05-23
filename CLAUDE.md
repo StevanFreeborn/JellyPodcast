@@ -43,17 +43,22 @@ Jellyfin plugin that provides universal podcast support via RSS/Atom feeds. User
 
 **Configuration/PluginConfiguration.cs**
 - User settings:
-  - `PodcastFeeds` - List of feed configurations (URL, custom name, enabled status)
+  - `PodcastFeeds` - List of feed configurations (URL, custom name, enabled status, per-feed retention)
   - `LibraryPath` - Where .strm files are created
   - `PreferredQuality` - Audio quality preference
   - `MaxEpisodesPerPodcast` - Episode limit per feed
-  - `EnableAutoCleanup` / `DaysToKeepEpisodes` - Cleanup settings
+  - `EnableAutoCleanup` / `DaysToKeepEpisodes` - Global cleanup settings (can be overridden per-feed)
   - `DownloadThumbnails` - Toggle thumbnail downloads
+- Per-feed settings (nullable, fall back to global if not set):
+  - `EnableAutoCleanup` - Override global cleanup setting for this feed
+  - `DaysToKeepEpisodes` - Override global retention period for this feed
 
 **Configuration/configPage.html**
 - Web UI for plugin configuration
 - Allows adding/removing podcast feeds dynamically
-- Each feed has: URL, custom name (optional), enabled checkbox
+- Each feed has: URL, custom name (optional), enabled checkbox, advanced settings
+- Advanced settings per feed: auto cleanup override, retention days override
+- Confirmation dialog when removing a feed (shows feed name/URL)
 - JavaScript handles dynamic feed list management
 
 **Plugin.cs**
