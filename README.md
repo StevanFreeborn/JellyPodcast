@@ -1,196 +1,121 @@
 # JellyPodcast
 
-> Universal podcast support for Jellyfin - Listen to any podcast in your media server
+A Jellyfin plugin that downloads podcast episodes from RSS, Atom, and Apple Podcasts feeds and tags them for use in Jellyfin Books or Music libraries.
 
-![Jellyfin](https://img.shields.io/badge/Jellyfin-10.11.x-blue)
-![.NET](https://img.shields.io/badge/.NET-9.0-purple)
-![License](https://img.shields.io/badge/license-MIT-green)
+Targets Jellyfin 12.4.x on .NET 11.0.
 
-JellyPodcast brings seamless podcast integration to Jellyfin. Simply add RSS feed URLs and the plugin automatically organizes your podcasts as TV shows, complete with artwork, metadata, and automatic updates.
+## Overview
 
-## ✨ Features
+Instead of proxying or wrapping streams, JellyPodcast downloads episode audio enclosures directly to disk, embeds ID3/MP4/Vorbis tags and cover art with `TagLibSharp`, and tracks downloaded GUIDs in `.podcast_state.json`. Because episodes are standard local audio files, Jellyfin clients can direct-play them without server-side transcoding.
 
-- 🎙️ **Universal Support** - Works with any RSS/Atom podcast feed
-- 🍎 **Apple Podcasts** - Paste Apple Podcasts URLs directly (auto-converts to RSS)
-- 📺 **TV Show Organization** - Podcasts appear as series with proper episode ordering
-- 🔄 **Auto-Refresh** - New episodes every 2 hours
-- 🎨 **Rich Metadata** - Episode descriptions, artwork, and thumbnails
-- 🌐 **Web Player Compatible** - Audio podcasts work smoothly in browser
-- 📱 **Mobile Ready** - Native playback on Jellyfin mobile apps
-- 🎬 **Video Support** - Works with both audio and video podcasts
-- 🧹 **Auto-Cleanup** - Optionally remove old episodes automatically
+## Features
 
-## 🚀 Quick Start
+- Supports RSS 2.0 (with iTunes extensions), Atom feeds, and `podcasts.apple.com` URLs
+- Downloads `.mp3`, `.m4a`, `.aac`, `.ogg`, and `.opus` enclosures atomically via `.tmp` files
+- Embeds `Album`, `AlbumArtists`, `Performers`, `Title`, `Track`, `Year`, `Comment` (show notes), `Genres`, and `FrontCover` artwork
+- Saves `cover.jpg` once per podcast directory
+- Skips already-downloaded episodes using `.podcast_state.json` (and re-downloads if a file is deleted from disk)
+- Refreshes feeds every 2 hours via the **Refresh Podcast Library** scheduled task and automatically queues a Jellyfin library scan when episodes are added or removed
+- Imports and exports podcast subscriptions as OPML 2.0 files for easy migration from Pocket Casts, Overcast, or AntennaPod
+- Supports per-podcast retention overrides (`Enabled`, `Disabled`, or global), episode caps, and manual episode/orphan cleanup endpoints
 
-### 1. Installation
+## Installation
 
-**Option A: From Release (Recommended)**
+### Jellyfin Plugin Repository (Recommended)
 
-1. Download `Jellyfin.Plugin.Podcast.dll` from [latest release](https://github.com/JHoahg/JellyPodcast/releases)
-2. Create plugin directory:
-   - **Docker**: `/config/plugins/Podcast_1.0.0.0/`
-   - **Windows**: `%ProgramData%\Jellyfin\Server\plugins\Podcast_1.0.0.0\`
-   - **Linux**: `/var/lib/jellyfin/plugins/Podcast_1.0.0.0/`
-   - **macOS**: `/Users/<username>/Library/Application Support/jellyfin/plugins/Podcast_1.0.0.0/`
-3. Copy the DLL to this directory
-4. Restart Jellyfin
+This lets Jellyfin install and update the plugin directly from the web dashboard without copying files manually:
 
-**Option B: Build from Source**
+1. In Jellyfin, open **Dashboard -> Plugins -> Repositories** (under the **Catalog** tab or **Repositories** settings).
+2. Click **Add** (`+`) and enter:
+   - **Repository Name**: `JellyPodcast`
+   - **Repository URL**: `https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/manifest.json`
+3. Open **Catalog**, find **Podcast**, and click **Install**.
+4. Restart Jellyfin.
+
+### Manual Release Install
+
+1. Download the `jellyfin-plugin-podcast_*.zip` archive from [GitHub Releases](https://github.com/StevanFreeborn/JellyPodcast/releases).
+2. Extract its contents (`Jellyfin.Plugin.Podcast.dll`, `TagLibSharp.dll`, `meta.json`, license files) into a plugin directory inside your Jellyfin plugins path:
+   - **Docker**: `/config/plugins/Podcast_2.0.0.0/`
+   - **Linux**: `/var/lib/jellyfin/plugins/Podcast_2.0.0.0/`
+   - **Windows**: `%ProgramData%\Jellyfin\Server\plugins\Podcast_2.0.0.0\`
+   - **macOS**: `~/Library/Application Support/jellyfin/plugins/Podcast_2.0.0.0/`
+3. Restart Jellyfin.
+
+### From Source
+
+Requires the .NET 11.0 SDK.
 
 ```bash
-git clone https://github.com/JHoahg/JellyPodcast.git
+git clone https://github.com/StevanFreeborn/JellyPodcast.git
 cd JellyPodcast
-dotnet build --configuration Release
-# Copy bin/Release/net9.0/Jellyfin.Plugin.Podcast.dll to plugins directory
+dotnet publish src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj -c Release -o ./dist
 ```
 
-### 2. Configuration
+Copy `dist/Jellyfin.Plugin.Podcast.dll` and `dist/TagLibSharp.dll` to your Jellyfin plugin directory and restart Jellyfin.
 
-1. Go to **Jellyfin Dashboard** → **Plugins** → **Podcast**
-2. Set **Library Path**:
-   - **Docker**: `/config/data/podcasts`
-   - **Other**: Choose any directory (will be created automatically)
-3. Add podcast feeds by clicking **"Add Feed"**:
-   - Paste RSS feed URL or Apple Podcasts URL
-   - Optionally set a custom name
-   - Click the checkbox to enable
-4. Click **Save**
+## Setup
 
-### 3. Initial Setup
+1. Open **Dashboard -> Plugins -> Podcast**.
+2. Set **Library Path** (default: `/config/data/podcasts`). For Docker, use a path inside the container.
+3. Add one or more feed URLs (RSS, Atom, or Apple Podcasts) — or click **Import OPML** to load subscriptions from Pocket Casts or another podcast app — review the list, and click **Save**.
+4. Go to **Dashboard -> Scheduled Tasks** and run **Refresh Podcast Library**.
+5. Go to **Dashboard -> Libraries -> Add Library**:
+   - **Content type**: **Books** (recommended if you want playback position resume) or **Music**.
+   - **Folder**: your configured **Library Path**.
+6. Scan the library.
 
-1. Go to **Dashboard** → **Scheduled Tasks**
-2. Find **"Refresh Podcast Library"** and click **▶ Run Now**
-3. Wait for completion (check progress in task status)
-4. Go to **Dashboard** → **Libraries** → **Add Library**
-   - Content type: **Shows**
-   - Folder: Point to your Library Path (e.g., `/config/data/podcasts`)
-5. Scan the library
-6. Your podcasts will appear in the home screen!
+## Disk Layout
 
-## 📖 Usage Guide
+```text
+<LibraryPath>/
+└── <Sanitized Podcast Title>/
+    ├── cover.jpg
+    ├── .podcast_state.json
+    ├── 2026-11-20 - Episode Title One.mp3
+    └── 2026-11-23 - Episode Title Two.m4a
+```
 
-### Adding Podcasts
+## Configuration
 
-**Finding RSS Feeds:**
-- **Apple Podcasts**: Just paste the Apple Podcasts URL (e.g., `https://podcasts.apple.com/podcast/id123456`)
-- **Podcast Websites**: Look for RSS icon or "Subscribe" link
-- **Podcast Directories**: Most provide RSS feed URLs
+| Setting                  | Description                                                                  | Default                 |
+|--------------------------|------------------------------------------------------------------------------|-------------------------|
+| Library Path             | Directory where podcast folders, audio files, and `cover.jpg` are stored     | `/config/data/podcasts` |
+| Download Cover Art       | Download `cover.jpg` and embed cover art into audio metadata tags            | `true`                  |
+| Max Episodes Per Podcast | Maximum number of episodes retained per feed                                 | `50`                    |
+| Enable Auto Cleanup      | Delete episodes older than the configured retention period                   | `false`                 |
+| Days to Keep Episodes    | Retention period in days when auto cleanup is enabled (overridable per feed) | `30`                    |
 
-**Supported Feed Formats:**
-- RSS 2.0 with iTunes extensions ✅
-- Atom feeds ✅
-- Apple Podcasts URLs ✅
+### Migration & Maintenance Actions
 
-### Web Player Compatibility Mode
+- **Import OPML** (`POST /Podcast/ImportOpml`): Parses an `.opml` subscription export (e.g., from Pocket Casts), deduplicates against current feeds, and stages new entries for review before saving.
+- **Export OPML** (`GET /Podcast/ExportOpml`): Downloads your saved podcast subscriptions as `jellyfin-podcasts.opml`.
+- **Clean Up All Episodes** (`POST /Podcast/Cleanup`): Deletes downloaded audio files and `.podcast_state.json` while keeping `cover.jpg` for configured feeds, and removes directories for feeds no longer in configuration.
+- **Clean Up Removed Feeds** (`POST /Podcast/CleanupOrphans`): Removes only directories and files belonging to feeds removed from configuration.
 
-Choose how audio podcasts are handled:
+## Troubleshooting
 
-- **Auto (Recommended)**: Wraps audio in video for smooth web playback
-- **Always Enable**: Forces video wrapping (uses server CPU)
-- **Always Disable**: Direct audio URLs (web player may not work)
+- **Plugin fails to load**: Verify that both `Jellyfin.Plugin.Podcast.dll` and `TagLibSharp.dll` are in the plugin directory.
+- **No episodes appear in Jellyfin**: Check that **Library Path** points to a path readable by the Jellyfin process, confirm the **Refresh Podcast Library** task completed without errors in the Jellyfin logs (`docker logs jellyfin | grep -i podcast`), and verify the library uses **Books** or **Music**.
+- **Feed not updating**: Confirm the feed is marked **Enabled** and returns valid RSS/Atom XML without HTTP authentication.
 
-💡 **Tip**: Leave on "Auto" for best experience across all devices.
+## Development
 
-⚠️ **Important**: After changing this setting:
-1. Click "Clean Up All Episodes" button
-2. Run "Refresh Podcast Library" task
+```bash
+# Build
+dotnet build Jellyfin.Plugin.Podcast.slnx --configuration Release
 
-### Episode Management
+# Run tests
+dotnet test --configuration Release
 
-**Auto-Cleanup:**
-- Enable to automatically delete old episodes
-- Set retention period (default: 30 days)
-- Keeps your library fresh
+# Run tests with Cobertura + HTML coverage report
+dotnet run scripts/test-coverage.cs
+```
 
-**Manual Cleanup:**
-- Click "Clean Up All Episodes" to remove all episode files
-- Podcast metadata is preserved
-- Run "Refresh Podcast Library" to repopulate
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for architecture notes, contribution guidelines, and dependency licenses.
 
-**Episode Limits:**
-- Set max episodes per podcast (default: 50)
-- Only newest episodes are kept
-- Perfect for daily news podcasts
+## Attribution & License
 
-## 🔧 Configuration Options
+This project originated as a fork of [JHoahg/JellyPodcast](https://github.com/JHoahg/JellyPodcast) and was rewritten to download local audio files and embed metadata directly.
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **Library Path** | Where podcast files are stored | `/config/data/podcasts` |
-| **Web Player Compatibility** | How to handle audio playback | Auto |
-| **Max Episodes Per Podcast** | Episode limit per feed | 50 |
-| **Download Thumbnails** | Download episode artwork | Enabled |
-| **Auto Cleanup** | Remove old episodes automatically | Disabled |
-| **Days to Keep Episodes** | Retention period for cleanup | 30 days |
-
-## ❓ Troubleshooting
-
-### Podcasts Not Appearing
-
-**Check these steps:**
-1. Verify Library Path is correct
-2. Ensure library content type is "Shows" (not Movies)
-3. Run "Refresh Podcast Library" task
-4. Check Jellyfin logs: `docker logs jellyfin | grep -i podcast`
-5. Verify files exist: `docker exec jellyfin ls /config/data/podcasts/`
-
-### Audio Podcasts Won't Play in Web Player
-
-The plugin includes automatic web player compatibility:
-- Ensure "Web Player Compatibility Mode" is set to "Auto" or "Always Enable"
-- Mobile and desktop apps work natively without this
-
-### Feed Not Updating
-
-**Common causes:**
-- Feed URL is incorrect or changed
-- Feed requires authentication (not supported yet)
-- Feed disabled in settings
-- Check: Dashboard → Scheduled Tasks → View refresh task logs
-
-### Path Issues (Docker)
-
-**Critical**: Use container paths, not host paths!
-- ✅ Correct: `/config/data/podcasts`
-- ❌ Wrong: `/storage/jellyfin/config/data/podcasts`
-
-## 🌟 Example Feeds
-
-Try these to get started:
-
-- **NPR News Now**: `https://feeds.npr.org/500005/podcast.xml`
-- **ZEIT Nur eine Frage**: `https://newsfeed.zeit.de/serie/nur-eine-frage`
-- **Or paste any Apple Podcasts URL!**
-
-## 🤝 Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Development setup
-- Code guidelines
-- Pull request process
-- Architecture documentation
-
-## 📚 Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** - Detailed developer documentation
-- **[RESEARCH.md](RESEARCH.md)** - Background on web player compatibility
-- **[TODO.md](TODO.md)** - Planned features and improvements
-
-## 🐛 Support
-
-- **Bug Reports**: [Open an issue](https://github.com/JHoahg/JellyPodcast/issues)
-- **Feature Requests**: [Start a discussion](https://github.com/JHoahg/JellyPodcast/discussions)
-- **Community**: [Jellyfin Forums](https://forum.jellyfin.org/)
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with the [Jellyfin Plugin SDK](https://github.com/jellyfin/jellyfin-plugin-sdk)
-- Inspired by the amazing Jellyfin community
-
----
-
-**Enjoying JellyPodcast?** ⭐ Star the repo to show your support!
+Licensed under the MIT License. See [LICENSE](LICENSE).
