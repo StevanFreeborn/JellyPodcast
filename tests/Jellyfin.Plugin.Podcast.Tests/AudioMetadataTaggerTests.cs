@@ -134,6 +134,28 @@ public sealed class AudioMetadataTaggerTests : IDisposable
     Assert.Equal("image/jpeg", item.MimeType);
   }
 
+  [Fact]
+  public void TagAudioFile_AutoDetectsPngMimeType_WhenCoverArtMimeTypeIsEmpty()
+  {
+    var mp3Path = WriteMinimalMp3("episode_png.mp3");
+    byte[] pngImage = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02];
+
+    _tagger.TagAudioFile(
+      mp3Path,
+      new EpisodeAudioMetadata
+      {
+        PodcastTitle = "Show",
+        EpisodeTitle = "Episode PNG",
+        CoverArtBytes = pngImage,
+      }
+    );
+
+    using var tagged = TagLib.File.Create(mp3Path);
+    var picture = Assert.Single(tagged.Tag.Pictures);
+    Assert.Equal("image/png", picture.MimeType);
+    Assert.Equal(pngImage, picture.Data.Data);
+  }
+
   private string WriteMinimalMp3(string fileName)
   {
     var path = Path.Combine(_tempDir, fileName);

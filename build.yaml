@@ -8,6 +8,11 @@ overview: "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. 
 category: "General"
 imageUrl: "https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/assets/logo.png"
 changelog: |
+  ## 2.0.3
+  - Download episode-specific artwork when available, falling back to podcast cover art
+  - Auto-detect embedded cover art MIME type and format (JPEG, PNG, WebP, GIF)
+  - Add native Jellyfin episode image provider for Books and Music libraries
+
   ## 2.0.2
   - Add JellyPodcast plugin logo for Jellyfin Catalog and My Plugins views
 

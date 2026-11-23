@@ -1,8 +1,11 @@
 using Jellyfin.Plugin.Podcast.Api;
 using Jellyfin.Plugin.Podcast.Configuration;
+using Jellyfin.Plugin.Podcast.Providers;
 using Jellyfin.Plugin.Podcast.Services;
 
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Model.Serialization;
 
 using Microsoft.AspNetCore.Mvc;
@@ -101,6 +104,21 @@ public sealed class PluginInstanceIntegrationTests : IDisposable
 
     var fileResult = Assert.IsType<FileContentResult>(controller.ExportOpml());
     Assert.Equal("jellyfin-podcasts.opml", fileResult.FileDownloadName);
+  }
+
+  [Fact]
+  public void PodcastEpisodeImageProvider_PublicConstructor_ReadsPluginInstance()
+  {
+    Plugin.Instance = null;
+    var provider = new PodcastEpisodeImageProvider(NullLogger<PodcastEpisodeImageProvider>.Instance);
+    var episode = new AudioBook { Path = Path.Combine(_tempDir, "Show", "ep1.mp3") };
+
+    Assert.False(provider.Supports(episode));
+
+    var plugin = CreateTestPlugin(_tempDir);
+    plugin.UpdateConfiguration(new PluginConfiguration { LibraryPath = _tempDir });
+
+    Assert.True(provider.Supports(episode));
   }
 
   private static Plugin CreateTestPlugin(string configDir)

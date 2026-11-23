@@ -12,8 +12,8 @@ Instead of proxying or wrapping streams, JellyPodcast downloads episode audio en
 
 - Supports RSS 2.0 (with iTunes extensions), Atom feeds, and `podcasts.apple.com` URLs
 - Downloads `.mp3`, `.m4a`, `.aac`, `.ogg`, and `.opus` enclosures atomically via `.tmp` files
-- Embeds `Album`, `AlbumArtists`, `Performers`, `Title`, `Track`, `Year`, `Comment` (show notes), `Genres`, and `FrontCover` artwork
-- Saves `cover.jpg` once per podcast directory
+- Embeds `Album`, `AlbumArtists`, `Performers`, `Title`, `Track`, `Year`, `Comment` (show notes), `Genres`, and `FrontCover` artwork (using episode-specific artwork when present, falling back to the podcast cover)
+- Saves `cover.jpg` once per podcast directory and provides a native Jellyfin episode image provider so Books and Music libraries display episode or show artwork instead of text-only cards
 - Skips already-downloaded episodes using `.podcast_state.json` (and re-downloads if a file is deleted from disk)
 - Refreshes feeds every 2 hours via the **Refresh Podcast Library** scheduled task and automatically queues a Jellyfin library scan when episodes are added or removed
 - Imports and exports podcast subscriptions as OPML 2.0 files for easy migration from Pocket Casts, Overcast, or AntennaPod
