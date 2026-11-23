@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Jellyfin.Plugin.Podcast.Tests/Jellyfin.Plugin.Podcast.Tests.csproj" />
+  </Folder>
+</Solution>
