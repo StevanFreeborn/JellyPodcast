@@ -241,9 +241,9 @@
         ApiClient.getPluginConfiguration(PodcastConfig.pluginUniqueId).then(function (config) {
           config.LibraryPath = document.getElementById('libraryPath').value;
           config.DownloadThumbnails = document.getElementById('downloadThumbnails').checked;
-          config.MaxEpisodesPerPodcast = parseInt(document.getElementById('maxEpisodesPerPodcast').value) || 50;
+          config.MaxEpisodesPerPodcast = parseInt(document.getElementById('maxEpisodesPerPodcast').value, 10) || 50;
           config.EnableAutoCleanup = document.getElementById('enableAutoCleanup').checked;
-          config.DaysToKeepEpisodes = parseInt(document.getElementById('daysToKeepEpisodes').value) || 30;
+          config.DaysToKeepEpisodes = parseInt(document.getElementById('daysToKeepEpisodes').value, 10) || 30;
 
           // Collect podcast feeds
           config.PodcastFeeds = PodcastConfig.collectFeeds();
@@ -304,7 +304,9 @@
             );
           }).catch(function (error) {
             Dashboard.hideLoadingMsg();
-            Dashboard.alert('OPML import failed: ' + (error.message || 'Invalid OPML file'));
+            PodcastConfig.getErrorMessage(error, 'Invalid OPML file').then(function (message) {
+              Dashboard.alert('OPML import failed: ' + message);
+            });
           });
         };
 
@@ -336,7 +338,9 @@
           URL.revokeObjectURL(downloadUrl);
         }).catch(function (error) {
           Dashboard.hideLoadingMsg();
-          Dashboard.alert('OPML export failed: ' + (error.message || 'Unknown error'));
+          PodcastConfig.getErrorMessage(error, 'Unknown error').then(function (message) {
+            Dashboard.alert('OPML export failed: ' + message);
+          });
         });
       });
 
@@ -379,6 +383,18 @@
           });
         }
       });
+
+      PodcastConfig.getErrorMessage = function (error, fallback) {
+        if (error && typeof error.text === 'function') {
+          return error.text().then(function (body) {
+            return (body && body.trim()) || error.statusText || fallback;
+          }).catch(function () {
+            return error.statusText || fallback;
+          });
+        }
+
+        return Promise.resolve((error && error.message) || fallback);
+      };
 
       PodcastConfig.generateId = function () {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
@@ -610,7 +626,7 @@
               CustomName: row.querySelector('.feedCustomName').value.trim(),
               Enabled: row.querySelector('.feedEnabled').checked,
               EnableAutoCleanup: cleanupOverride === 'true' ? true : (cleanupOverride === 'false' ? false : null),
-              DaysToKeepEpisodes: daysValue ? parseInt(daysValue) : null
+              DaysToKeepEpisodes: daysValue ? parseInt(daysValue, 10) : null
             });
           }
         });
