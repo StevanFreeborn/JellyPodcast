@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Podcast Plugin Configuration</title>
+</head>
+
+<body>
+  <div
+    id="PodcastConfigPage"
+    data-role="page"
+    class="page type-interior pluginConfigurationPage"
+    data-require="emby-input,emby-button,emby-checkbox,emby-select"
+  >
+    <div data-role="content">
+      <div class="content-primary">
+        <form id="PodcastConfigForm">
+          <div class="verticalSection">
+            <h2>General Settings</h2>
+
+            <div class="inputContainer">
+              <label for="libraryPath">Library Path:</label>
+              <input
+                id="libraryPath"
+                name="libraryPath"
+                type="text"
+                is="emby-input"
+              />
+              <div class="fieldDescription">
+                Directory where podcast audio files (.mp3, .m4a, .ogg, .opus) and cover art will be downloaded (default:
+                /config/data/podcasts).<br />
+                Point a Jellyfin <strong>Books</strong> library (recommended for playback resume tracking) or
+                <strong>Music</strong> library at this path.
+              </div>
+            </div>
+
+            <div class="checkboxContainer checkboxContainer-withDescription">
+              <label>
+                <input
+                  id="downloadThumbnails"
+                  name="downloadThumbnails"
+                  type="checkbox"
+                  is="emby-checkbox"
+                />
+                <span>Download Cover Art</span>
+              </label>
+              <div class="fieldDescription">Download podcast cover.jpg and embed artwork into audio metadata tags</div>
+            </div>
+
+            <div class="inputContainer">
+              <label for="maxEpisodesPerPodcast">Max Episodes Per Podcast:</label>
+              <input
+                id="maxEpisodesPerPodcast"
+                name="maxEpisodesPerPodcast"
+                type="number"
+                is="emby-input"
+                min="1"
+                max="1000"
+              />
+              <div class="fieldDescription">Maximum number of episodes to keep per podcast (default: 50)</div>
+            </div>
+          </div>
+
+          <div class="verticalSection">
+            <h2>Auto Cleanup</h2>
+
+            <div class="checkboxContainer checkboxContainer-withDescription">
+              <label>
+                <input
+                  id="enableAutoCleanup"
+                  name="enableAutoCleanup"
+                  type="checkbox"
+                  is="emby-checkbox"
+                />
+                <span>Enable Auto Cleanup</span>
+              </label>
+              <div class="fieldDescription">Automatically delete old episodes</div>
+            </div>
+
+            <div class="inputContainer">
+              <label for="daysToKeepEpisodes">Days to Keep Episodes:</label>
+              <input
+                id="daysToKeepEpisodes"
+                name="daysToKeepEpisodes"
+                type="number"
+                is="emby-input"
+                min="1"
+                max="365"
+              />
+              <div class="fieldDescription">Number of days to keep episodes before cleanup (default: 30)</div>
+            </div>
+          </div>
+
+          <div class="verticalSection">
+            <h2>Maintenance</h2>
+            <button
+              type="button"
+              id="cleanupButton"
+              is="emby-button"
+              class="raised delete block"
+              style="margin-top: 1em;"
+            >
+              <span>Clean Up All Episodes</span>
+            </button>
+            <div
+              class="fieldDescription"
+              style="margin-top: 0.5em;"
+            >
+              Removes all downloaded episode audio files and state manifests (.podcast_state.json) while keeping
+              cover.jpg for configured feeds, and removes directories for deleted feeds.
+              <br /><strong>Warning:</strong> This action cannot be undone. Run "Refresh Podcast Library" after cleanup
+              to re-download episodes.
+            </div>
+
+            <button
+              type="button"
+              id="cleanupOrphansButton"
+              is="emby-button"
+              class="raised block"
+              style="margin-top: 1em;"
+            >
+              <span>Clean Up Removed Feeds</span>
+            </button>
+            <div
+              class="fieldDescription"
+              style="margin-top: 0.5em;"
+            >
+              Deletes directories and audio files belonging to podcast feeds that have been removed from your
+              configuration.
+            </div>
+          </div>
+
+          <div class="verticalSection">
+            <h2>Podcast Feeds</h2>
+            <div class="fieldDescription">
+              Add podcast RSS, Atom, or Apple Podcasts feed URLs below, or import/export subscriptions as an OPML 2.0
+              file (compatible with Pocket Casts, Overcast, and AntennaPod).
+            </div>
+
+            <div style="margin-top: 1em; padding: 1em; background: rgba(0,0,0,0.2); border-radius: 4px;">
+              <div style="display: flex; flex-wrap: wrap; gap: 0.75em; align-items: center;">
+                <input
+                  id="opmlFileInput"
+                  type="file"
+                  accept=".opml,.xml,text/xml,application/xml"
+                  style="display: none;"
+                />
+                <button
+                  type="button"
+                  id="importOpmlButton"
+                  is="emby-button"
+                  class="raised"
+                >
+                  <span>Import OPML</span>
+                </button>
+                <button
+                  type="button"
+                  id="exportOpmlButton"
+                  is="emby-button"
+                  class="raised"
+                >
+                  <span>Export OPML</span>
+                </button>
+              </div>
+              <div
+                class="checkboxContainer"
+                style="margin-top: 0.75em; margin-bottom: 0.25em;"
+              >
+                <label>
+                  <input
+                    id="importOpmlUseTitles"
+                    type="checkbox"
+                    is="emby-checkbox"
+                  />
+                  <span>Use OPML titles as Custom Name</span>
+                </label>
+              </div>
+              <div class="fieldDescription">
+                Import adds feeds below for review before you click <strong>Save</strong>. Export downloads your
+                currently saved feeds as <code>jellyfin-podcasts.opml</code>.
+              </div>
+            </div>
+
+            <div
+              id="podcastFeedsContainer"
+              style="margin-top: 1em;"
+            >
+              <!-- Podcast feeds will be dynamically added here -->
+            </div>
+
+            <button
+              type="button"
+              id="addFeedButton"
+              is="emby-button"
+              class="raised button-submit block"
+              style="margin-top: 1em;"
+            >
+              <span>Add Podcast Feed</span>
+            </button>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              is="emby-button"
+              class="raised button-submit block"
+            >
+              <span>Save</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="text/javascript">
+      var PodcastConfig = {
+        pluginUniqueId: 'a3af35b9-8c3f-4349-8fcb-18561540fbfc'
+      };
+
+      document.getElementById('PodcastConfigPage').addEventListener('pageshow', function () {
+        Dashboard.showLoadingMsg();
+        ApiClient.getPluginConfiguration(PodcastConfig.pluginUniqueId).then(function (config) {
+          document.getElementById('libraryPath').value = config.LibraryPath || '/config/data/podcasts';
+          document.getElementById('downloadThumbnails').checked = config.DownloadThumbnails !== false;
+          document.getElementById('maxEpisodesPerPodcast').value = config.MaxEpisodesPerPodcast || 50;
+          document.getElementById('enableAutoCleanup').checked = config.EnableAutoCleanup || false;
+          document.getElementById('daysToKeepEpisodes').value = config.DaysToKeepEpisodes || 30;
+
+          // Load podcast feeds
+          PodcastConfig.loadFeeds(config.PodcastFeeds || []);
+
+          Dashboard.hideLoadingMsg();
+        });
+      });
+
+      document.getElementById('PodcastConfigForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        Dashboard.showLoadingMsg();
+
+        ApiClient.getPluginConfiguration(PodcastConfig.pluginUniqueId).then(function (config) {
+          config.LibraryPath = document.getElementById('libraryPath').value;
+          config.DownloadThumbnails = document.getElementById('downloadThumbnails').checked;
+          config.MaxEpisodesPerPodcast = parseInt(document.getElementById('maxEpisodesPerPodcast').value) || 50;
+          config.EnableAutoCleanup = document.getElementById('enableAutoCleanup').checked;
+          config.DaysToKeepEpisodes = parseInt(document.getElementById('daysToKeepEpisodes').value) || 30;
+
+          // Collect podcast feeds
+          config.PodcastFeeds = PodcastConfig.collectFeeds();
+
+          ApiClient.updatePluginConfiguration(PodcastConfig.pluginUniqueId, config).then(function (result) {
+            Dashboard.processPluginConfigurationUpdateResult(result);
+          });
+        });
+
+        return false;
+      });
+
+      document.getElementById('addFeedButton').addEventListener('click', function () {
+        PodcastConfig.addFeedRow({ Id: PodcastConfig.generateId(), Url: '', CustomName: '', Enabled: true });
+      });
+
+      document.getElementById('importOpmlButton').addEventListener('click', function () {
+        document.getElementById('opmlFileInput').click();
+      });
+
+      document.getElementById('opmlFileInput').addEventListener('change', function (e) {
+        var input = e.target;
+        var file = input.files && input.files[0];
+
+        if (!file) {
+          return;
+        }
+
+        var reader = new FileReader();
+
+        reader.onload = function () {
+          var opmlText = typeof reader.result === 'string' ? reader.result : '';
+          input.value = '';
+
+          if (!opmlText.trim()) {
+            Dashboard.alert('The selected OPML file is empty.');
+            return;
+          }
+
+          Dashboard.showLoadingMsg();
+
+          ApiClient.fetch({
+            url: ApiClient.getUrl('/Podcast/ImportOpml'),
+            type: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({ OpmlContent: opmlText })
+          }).then(function (response) {
+            Dashboard.hideLoadingMsg();
+            var imported = (response && (response.Feeds || response.feeds)) || [];
+            var result = PodcastConfig.mergeImportedFeeds(
+              imported,
+              document.getElementById('importOpmlUseTitles').checked
+            );
+
+            Dashboard.alert(
+              'OPML import complete: added ' + result.added + ' feed(s), skipped ' + result.skipped + ' duplicate(s).\n\nReview the feed list below and click Save to persist changes.'
+            );
+          }).catch(function (error) {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('OPML import failed: ' + (error.message || 'Invalid OPML file'));
+          });
+        };
+
+        reader.onerror = function () {
+          input.value = '';
+          Dashboard.alert('Failed to read the selected OPML file.');
+        };
+
+        reader.readAsText(file);
+      });
+
+      document.getElementById('exportOpmlButton').addEventListener('click', function () {
+        Dashboard.showLoadingMsg();
+
+        ApiClient.fetch({
+          url: ApiClient.getUrl('/Podcast/ExportOpml'),
+          type: 'GET',
+          dataType: 'text'
+        }).then(function (opmlXml) {
+          Dashboard.hideLoadingMsg();
+          var blob = new Blob([opmlXml || ''], { type: 'text/x-opml;charset=utf-8' });
+          var downloadUrl = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = 'jellyfin-podcasts.opml';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(downloadUrl);
+        }).catch(function (error) {
+          Dashboard.hideLoadingMsg();
+          Dashboard.alert('OPML export failed: ' + (error.message || 'Unknown error'));
+        });
+      });
+
+      document.getElementById('cleanupButton').addEventListener('click', function () {
+        if (confirm('Are you sure you want to clean up all episodes? This will delete all downloaded audio files and .podcast_state.json manifests.\n\nCover art (cover.jpg) for active feeds will be kept.\n\nYou will need to run "Refresh Podcast Library" to re-download episodes.')) {
+          Dashboard.showLoadingMsg();
+
+          var url = ApiClient.getUrl('/Podcast/Cleanup');
+
+          ApiClient.fetch({
+            url: url,
+            type: 'POST',
+            dataType: 'json'
+          }).then(function (response) {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('Episode cleanup completed successfully. Deleted ' + (response.FilesDeleted || 0) + ' files and ' + (response.DirectoriesDeleted || 0) + ' orphaned directories.\n\nRun "Refresh Podcast Library" to re-download episodes.');
+          }).catch(function (error) {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('Cleanup failed: ' + (error.message || 'Unknown error'));
+          });
+        }
+      });
+
+      document.getElementById('cleanupOrphansButton').addEventListener('click', function () {
+        if (confirm('Remove folders and audio files for podcast feeds that are no longer in your saved configuration?')) {
+          Dashboard.showLoadingMsg();
+
+          var url = ApiClient.getUrl('/Podcast/CleanupOrphans');
+
+          ApiClient.fetch({
+            url: url,
+            type: 'POST',
+            dataType: 'json'
+          }).then(function (response) {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('Removed feed cleanup completed. Deleted ' + (response.DirectoriesDeleted || 0) + ' directories and ' + (response.FilesDeleted || 0) + ' files.');
+          }).catch(function (error) {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert('Cleanup failed: ' + (error.message || 'Unknown error'));
+          });
+        }
+      });
+
+      PodcastConfig.generateId = function () {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      };
+
+      PodcastConfig.loadFeeds = function (feeds) {
+        var container = document.getElementById('podcastFeedsContainer');
+        container.innerHTML = '';
+
+        if (feeds.length === 0) {
+          // Add one empty feed by default
+          PodcastConfig.addFeedRow({ Id: PodcastConfig.generateId(), Url: '', CustomName: '', Enabled: true });
+        } else {
+          feeds.forEach(function (feed) {
+            PodcastConfig.addFeedRow(feed);
+          });
+        }
+      };
+
+      PodcastConfig.addFeedRow = function (feed) {
+        var container = document.getElementById('podcastFeedsContainer');
+        var feedDiv = document.createElement('div');
+        feedDiv.className = 'podcastFeedRow';
+        feedDiv.style.cssText = 'border: 1px solid #444; padding: 1em; margin-bottom: 1em; border-radius: 4px;';
+        feedDiv.setAttribute('data-feed-id', feed.Id);
+
+        // Create checkbox container
+        var checkboxContainer = document.createElement('div');
+        checkboxContainer.className = 'checkboxContainer';
+        var checkboxLabel = document.createElement('label');
+        var checkboxInput = document.createElement('input');
+        checkboxInput.type = 'checkbox';
+        checkboxInput.className = 'feedEnabled';
+        checkboxInput.setAttribute('is', 'emby-checkbox');
+        checkboxInput.checked = feed.Enabled;
+        var checkboxSpan = document.createElement('span');
+        checkboxSpan.textContent = 'Enabled';
+        checkboxLabel.appendChild(checkboxInput);
+        checkboxLabel.appendChild(checkboxSpan);
+        checkboxContainer.appendChild(checkboxLabel);
+
+        // Create URL input container
+        var urlContainer = document.createElement('div');
+        urlContainer.className = 'inputContainer';
+        var urlLabel = document.createElement('label');
+        urlLabel.textContent = 'Feed URL:';
+        var urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.className = 'feedUrl';
+        urlInput.setAttribute('is', 'emby-input');
+        urlInput.value = feed.Url || '';
+        urlInput.placeholder = 'https://example.com/podcast/feed.xml';
+        urlContainer.appendChild(urlLabel);
+        urlContainer.appendChild(urlInput);
+
+        // Create custom name input container
+        var nameContainer = document.createElement('div');
+        nameContainer.className = 'inputContainer';
+        var nameLabel = document.createElement('label');
+        nameLabel.textContent = 'Custom Name (optional):';
+        var nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'feedCustomName';
+        nameInput.setAttribute('is', 'emby-input');
+        nameInput.value = feed.CustomName || '';
+        nameInput.placeholder = 'Leave empty to use feed title';
+        nameContainer.appendChild(nameLabel);
+        nameContainer.appendChild(nameInput);
+
+        // Create advanced settings toggle
+        var advancedToggle = document.createElement('button');
+        advancedToggle.type = 'button';
+        advancedToggle.setAttribute('is', 'emby-button');
+        advancedToggle.setAttribute('class', 'raised');
+        advancedToggle.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em;';
+        var toggleSpan = document.createElement('span');
+        toggleSpan.textContent = '▼ Advanced Settings';
+        advancedToggle.appendChild(toggleSpan);
+
+        // Create advanced settings container (initially hidden)
+        var advancedContainer = document.createElement('div');
+        advancedContainer.className = 'advancedSettings';
+        advancedContainer.style.cssText = 'display: none; margin-top: 1em; padding: 1em; background: rgba(0,0,0,0.2); border-radius: 4px;';
+
+        // Per-feed auto cleanup 3-state override
+        var feedCleanupContainer = document.createElement('div');
+        feedCleanupContainer.className = 'selectContainer';
+        var feedCleanupLabel = document.createElement('label');
+        feedCleanupLabel.textContent = 'Auto Cleanup Override:';
+        var feedCleanupSelect = document.createElement('select');
+        feedCleanupSelect.className = 'feedEnableAutoCleanup';
+        feedCleanupSelect.setAttribute('is', 'emby-select');
+        [
+          { value: '', text: 'Use global setting' },
+          { value: 'true', text: 'Enabled' },
+          { value: 'false', text: 'Disabled' }
+        ].forEach(function (opt) {
+          var option = document.createElement('option');
+          option.value = opt.value;
+          option.textContent = opt.text;
+          feedCleanupSelect.appendChild(option);
+        });
+        feedCleanupSelect.value = feed.EnableAutoCleanup === true
+          ? 'true'
+          : (feed.EnableAutoCleanup === false ? 'false' : '');
+        feedCleanupContainer.appendChild(feedCleanupLabel);
+        feedCleanupContainer.appendChild(feedCleanupSelect);
+
+        // Per-feed retention days
+        var feedRetentionContainer = document.createElement('div');
+        feedRetentionContainer.className = 'inputContainer';
+        feedRetentionContainer.style.marginTop = '0.5em';
+        var feedRetentionLabel = document.createElement('label');
+        feedRetentionLabel.textContent = 'Days to Keep Episodes (leave empty = use global setting):';
+        var feedRetentionInput = document.createElement('input');
+        feedRetentionInput.type = 'number';
+        feedRetentionInput.className = 'feedDaysToKeepEpisodes';
+        feedRetentionInput.setAttribute('is', 'emby-input');
+        feedRetentionInput.min = '1';
+        feedRetentionInput.max = '365';
+        feedRetentionInput.value = feed.DaysToKeepEpisodes || '';
+        feedRetentionInput.placeholder = 'Use global setting';
+        feedRetentionContainer.appendChild(feedRetentionLabel);
+        feedRetentionContainer.appendChild(feedRetentionInput);
+
+        advancedContainer.appendChild(feedCleanupContainer);
+        advancedContainer.appendChild(feedRetentionContainer);
+
+        // Toggle advanced settings
+        advancedToggle.addEventListener('click', function () {
+          var isVisible = advancedContainer.style.display !== 'none';
+          advancedContainer.style.display = isVisible ? 'none' : 'block';
+          toggleSpan.textContent = isVisible ? '▼ Advanced Settings' : '▲ Advanced Settings';
+        });
+
+        // Create remove button
+        var removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.setAttribute('is', 'emby-button');
+        removeButton.setAttribute('class', 'raised block removeFeedButton');
+        removeButton.style.backgroundColor = '#c00';
+        removeButton.style.marginTop = '1em';
+        var removeSpan = document.createElement('span');
+        removeSpan.textContent = 'Remove Feed';
+        removeButton.appendChild(removeSpan);
+
+        removeButton.addEventListener('click', function () {
+          var feedName = nameInput.value.trim() || urlInput.value.trim() || 'this feed';
+          if (confirm('Are you sure you want to delete the feed "' + feedName + '"?\n\nThis will remove the feed from your configuration, but episode files will remain on disk until you run cleanup.')) {
+            feedDiv.remove();
+          }
+        });
+
+        // Append all elements
+        feedDiv.appendChild(checkboxContainer);
+        feedDiv.appendChild(urlContainer);
+        feedDiv.appendChild(nameContainer);
+        feedDiv.appendChild(advancedToggle);
+        feedDiv.appendChild(advancedContainer);
+        feedDiv.appendChild(removeButton);
+
+        container.appendChild(feedDiv);
+      };
+
+      PodcastConfig.mergeImportedFeeds = function (entries, useTitles) {
+        var container = document.getElementById('podcastFeedsContainer');
+        var rows = container.querySelectorAll('.podcastFeedRow');
+        var existingUrls = {};
+
+        rows.forEach(function (row) {
+          var existingUrl = row.querySelector('.feedUrl').value.trim();
+          if (existingUrl) {
+            existingUrls[existingUrl.toLowerCase()] = true;
+          }
+        });
+
+        if (rows.length === 1 && !rows[0].querySelector('.feedUrl').value.trim() && entries.length > 0) {
+          container.innerHTML = '';
+        }
+
+        var added = 0;
+        var skipped = 0;
+
+        entries.forEach(function (entry) {
+          var url = (entry.Url || entry.url || '').trim();
+          if (!url) {
+            return;
+          }
+
+          var key = url.toLowerCase();
+          if (existingUrls[key]) {
+            skipped++;
+            return;
+          }
+
+          existingUrls[key] = true;
+          var title = (entry.Title || entry.title || '').trim();
+
+          PodcastConfig.addFeedRow({
+            Id: PodcastConfig.generateId(),
+            Url: url,
+            CustomName: useTitles && title ? title : '',
+            Enabled: true,
+            EnableAutoCleanup: null,
+            DaysToKeepEpisodes: null
+          });
+          added++;
+        });
+
+        return { added: added, skipped: skipped };
+      };
+
+      PodcastConfig.collectFeeds = function () {
+        var feeds = [];
+        var feedRows = document.querySelectorAll('.podcastFeedRow');
+
+        feedRows.forEach(function (row) {
+          var url = row.querySelector('.feedUrl').value.trim();
+          if (url) {
+            var daysValue = row.querySelector('.feedDaysToKeepEpisodes').value.trim();
+            var cleanupOverride = row.querySelector('.feedEnableAutoCleanup').value;
+
+            feeds.push({
+              Id: row.getAttribute('data-feed-id'),
+              Url: url,
+              CustomName: row.querySelector('.feedCustomName').value.trim(),
+              Enabled: row.querySelector('.feedEnabled').checked,
+              EnableAutoCleanup: cleanupOverride === 'true' ? true : (cleanupOverride === 'false' ? false : null),
+              DaysToKeepEpisodes: daysValue ? parseInt(daysValue) : null
+            });
+          }
+        });
+
+        return feeds;
+      };
+    </script>
+  </div>
+</body>
+
+</html>
