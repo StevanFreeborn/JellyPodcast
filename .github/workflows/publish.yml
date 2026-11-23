@@ -93,6 +93,7 @@ jobs:
           mkdir -p ./stage
           cp ./dist/Jellyfin.Plugin.Podcast.dll ./stage/
           cp ./dist/TagLibSharp.dll ./stage/
+          cp ./assets/logo.png ./stage/logo.png
           cp ./LICENSE ./stage/
           cp ./THIRD-PARTY-NOTICES.md ./stage/
 
@@ -100,6 +101,7 @@ jobs:
             --write-meta \
             --build-yaml build.yaml \
             --version "$VERSION" \
+            --image-path logo.png \
             --output ./stage/meta.json
 
           (cd ./stage && zip -r "../${ZIP_NAME}" .)
