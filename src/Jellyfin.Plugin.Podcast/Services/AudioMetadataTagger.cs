@@ -47,8 +47,9 @@ public class EpisodeAudioMetadata
 
   /// <summary>
   /// Gets or sets the MIME type of <see cref="CoverArtBytes"/>.
+  /// When empty, the MIME type is inferred automatically from the image bytes.
   /// </summary>
-  public string CoverArtMimeType { get; set; } = "image/jpeg";
+  public string CoverArtMimeType { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -116,7 +117,7 @@ public class AudioMetadataTagger : IAudioMetadataTagger
     if (metadata.CoverArtBytes is { Length: > 0 })
     {
       var mimeType = string.IsNullOrWhiteSpace(metadata.CoverArtMimeType)
-        ? "image/jpeg"
+        ? ImageFormatDetector.DetectMimeType(metadata.CoverArtBytes)
         : metadata.CoverArtMimeType;
 
       var picture = new Picture(new ByteVector(metadata.CoverArtBytes))

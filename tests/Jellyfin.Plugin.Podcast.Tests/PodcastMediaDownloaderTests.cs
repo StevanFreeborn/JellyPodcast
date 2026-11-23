@@ -228,6 +228,58 @@ public sealed class PodcastMediaDownloaderTests : IDisposable
     Assert.False(File.Exists(Path.Combine(_tempDir, $"{PodcastMediaDownloader.CoverFileName}.tmp")));
   }
 
+  [Fact]
+  public async Task DownloadImageBytesAsync_ReturnsBytesOnSuccess_AndNullOnInvalidEmptyOrError()
+  {
+    byte[] expectedBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    var okHandler = new StubHttpMessageHandler(
+      (_, _) => Task.FromResult(
+        new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new ByteArrayContent(expectedBytes),
+        }
+      )
+    );
+    var okDownloader = CreateDownloader(okHandler);
+
+    var downloaded = await okDownloader.DownloadImageBytesAsync("https://cdn.example.com/ep.png", TestContext.Current.CancellationToken);
+    Assert.Equal(expectedBytes, downloaded);
+    Assert.Null(await okDownloader.DownloadImageBytesAsync("   ", TestContext.Current.CancellationToken));
+
+    var emptyHandler = new StubHttpMessageHandler(
+      (_, _) => Task.FromResult(
+        new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new ByteArrayContent([]),
+        }
+      )
+    );
+    var emptyDownloader = CreateDownloader(emptyHandler);
+    Assert.Null(await emptyDownloader.DownloadImageBytesAsync("https://cdn.example.com/empty.png", TestContext.Current.CancellationToken));
+
+    var errorHandler = new StubHttpMessageHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
+    var errorDownloader = CreateDownloader(errorHandler);
+    Assert.Null(await errorDownloader.DownloadImageBytesAsync("https://cdn.example.com/missing.png", TestContext.Current.CancellationToken));
+  }
+
+  [Fact]
+  public async Task DownloadImageBytesAsync_RethrowsCancellation()
+  {
+    using var cts = new CancellationTokenSource();
+    await cts.CancelAsync();
+
+    var handler = new StubHttpMessageHandler(
+      (_, ct) =>
+      {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+      }
+    );
+    var downloader = CreateDownloader(handler);
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(() => downloader.DownloadImageBytesAsync("https://cdn.example.com/ep.png", cts.Token));
+  }
+
   private static PodcastMediaDownloader CreateDownloader(HttpMessageHandler handler)
   {
     var factoryMock = new Mock<IHttpClientFactory>();

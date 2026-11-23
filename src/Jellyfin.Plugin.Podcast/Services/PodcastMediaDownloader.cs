@@ -28,6 +28,15 @@ public interface IPodcastMediaDownloader
   /// <returns>The cover image bytes, or <c>null</c> if unavailable or download failed.</returns>
   [SuppressMessage("Design", "CA1054:URI-like parameters should not be strings", Justification = "Artwork URLs originate as raw strings from RSS feeds.")]
   Task<byte[]?> DownloadCoverArtAsync(string? imageUrl, string podcastDir, CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Downloads raw image bytes from <paramref name="imageUrl"/>.
+  /// </summary>
+  /// <param name="imageUrl">Image URL.</param>
+  /// <param name="cancellationToken">Cancellation token.</param>
+  /// <returns>The downloaded image bytes, or <c>null</c> if unavailable or download failed.</returns>
+  [SuppressMessage("Design", "CA1054:URI-like parameters should not be strings", Justification = "Artwork URLs originate as raw strings from RSS feeds.")]
+  Task<byte[]?> DownloadImageBytesAsync(string? imageUrl, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -136,32 +145,18 @@ public partial class PodcastMediaDownloader(
       return await File.ReadAllBytesAsync(coverPath, cancellationToken).ConfigureAwait(false);
     }
 
-    if (string.IsNullOrWhiteSpace(imageUrl))
+    var imageBytes = await DownloadImageBytesAsync(imageUrl, cancellationToken).ConfigureAwait(false);
+
+    if (imageBytes is null)
     {
       return null;
     }
 
-    Directory.CreateDirectory(podcastDir);
     var tempPath = $"{coverPath}.tmp";
 
     try
     {
-      using var httpClient = CreateConfiguredClient();
-      using var response = await httpClient.GetAsync(
-        new Uri(imageUrl, UriKind.RelativeOrAbsolute),
-        HttpCompletionOption.ResponseHeadersRead,
-        cancellationToken
-      ).ConfigureAwait(false);
-
-      response.EnsureSuccessStatusCode();
-
-      var imageBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-
-      if (imageBytes.Length is 0)
-      {
-        return null;
-      }
-
+      Directory.CreateDirectory(podcastDir);
       await File.WriteAllBytesAsync(tempPath, imageBytes, cancellationToken).ConfigureAwait(false);
       File.Move(tempPath, coverPath, overwrite: true);
 
@@ -176,6 +171,40 @@ public partial class PodcastMediaDownloader(
     catch (Exception ex)
     {
       TryDeleteFile(tempPath);
+      LogCoverArtFailed(_logger, imageUrl ?? string.Empty, ex);
+      return null;
+    }
+  }
+
+  /// <inheritdoc />
+  [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Missing or failing cover art should not abort podcast episode syncing.")]
+  public async Task<byte[]?> DownloadImageBytesAsync(string? imageUrl, CancellationToken cancellationToken)
+  {
+    if (string.IsNullOrWhiteSpace(imageUrl))
+    {
+      return null;
+    }
+
+    try
+    {
+      using var httpClient = CreateConfiguredClient();
+      using var response = await httpClient.GetAsync(
+        new Uri(imageUrl, UriKind.RelativeOrAbsolute),
+        HttpCompletionOption.ResponseHeadersRead,
+        cancellationToken
+      ).ConfigureAwait(false);
+
+      response.EnsureSuccessStatusCode();
+
+      var imageBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+      return imageBytes.Length is > 0 ? imageBytes : null;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      throw;
+    }
+    catch (Exception ex)
+    {
       LogCoverArtFailed(_logger, imageUrl, ex);
       return null;
     }

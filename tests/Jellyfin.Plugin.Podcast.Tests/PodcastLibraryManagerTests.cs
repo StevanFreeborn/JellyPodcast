@@ -628,6 +628,94 @@ public sealed class PodcastLibraryManagerTests : IDisposable
     Assert.True(state.Episodes.ContainsKey("ep-keep"));
   }
 
+  [Fact]
+  public async Task RefreshLibraryAsync_UsesDistinctEpisodeArtwork_AndFallsBackToPodcastCover()
+  {
+    byte[] showCoverBytes = [0xFF, 0xD8, 0xFF, 0xE0, 0x01];
+    byte[] episodeCoverBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x02];
+
+    var feed = new PodcastFeed
+    {
+      Id = "feed-art",
+      Url = "https://example.com/feed.xml",
+      CustomName = "Art Show",
+      Enabled = true,
+    };
+
+    var parserMock = new Mock<IPodcastFeedParser>();
+    parserMock.Setup(p => p.ParseFeedAsync(feed.Url, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(
+        new PodcastFeedData
+        {
+          Title = "Art Show",
+          ImageUrl = "https://example.com/show.jpg",
+          Episodes =
+          [
+            new PodcastEpisode
+            {
+              Guid = "ep-1",
+              Title = "Episode One",
+              MediaUrl = "https://example.com/ep1.mp3",
+              MediaType = "audio/mpeg",
+              ImageUrl = "https://example.com/ep1.png",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-1),
+            },
+            new PodcastEpisode
+            {
+              Guid = "ep-2",
+              Title = "Episode Two",
+              MediaUrl = "https://example.com/ep2.mp3",
+              MediaType = "audio/mpeg",
+              ImageUrl = "https://example.com/ep2-missing.png",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-2),
+            },
+            new PodcastEpisode
+            {
+              Guid = "ep-3",
+              Title = "Episode Three",
+              MediaUrl = "https://example.com/ep3.mp3",
+              MediaType = "audio/mpeg",
+              ImageUrl = "https://example.com/show.jpg",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-3),
+            },
+          ],
+        }
+      );
+
+    var downloaderMock = CreateDownloaderMock(showCoverBytes);
+    downloaderMock
+      .Setup(d => d.DownloadImageBytesAsync("https://example.com/ep1.png", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(episodeCoverBytes);
+    downloaderMock
+      .Setup(d => d.DownloadImageBytesAsync("https://example.com/ep2-missing.png", It.IsAny<CancellationToken>()))
+      .ReturnsAsync((byte[]?)null);
+
+    var manager = CreateManager(parserMock.Object, downloaderMock.Object);
+    await manager.RefreshLibraryAsync(CreateConfig(feed), TestContext.Current.CancellationToken);
+
+    var podcastDir = Path.Combine(_libraryPath, "Art Show");
+    var files = Directory.GetFiles(podcastDir, "*.mp3").OrderBy(f => f, StringComparer.Ordinal).ToArray();
+    Assert.Equal(3, files.Length);
+
+    var ep1File = Assert.Single(files, f => f.Contains("Episode One", StringComparison.Ordinal));
+    var ep2File = Assert.Single(files, f => f.Contains("Episode Two", StringComparison.Ordinal));
+    var ep3File = Assert.Single(files, f => f.Contains("Episode Three", StringComparison.Ordinal));
+
+    using var ep1Tag = TagLib.File.Create(ep1File);
+    Assert.Equal("image/png", Assert.Single(ep1Tag.Tag.Pictures).MimeType);
+    Assert.Equal(episodeCoverBytes, Assert.Single(ep1Tag.Tag.Pictures).Data.Data);
+
+    using var ep2Tag = TagLib.File.Create(ep2File);
+    Assert.Equal("image/jpeg", Assert.Single(ep2Tag.Tag.Pictures).MimeType);
+    Assert.Equal(showCoverBytes, Assert.Single(ep2Tag.Tag.Pictures).Data.Data);
+
+    using var ep3Tag = TagLib.File.Create(ep3File);
+    Assert.Equal("image/jpeg", Assert.Single(ep3Tag.Tag.Pictures).MimeType);
+    Assert.Equal(showCoverBytes, Assert.Single(ep3Tag.Tag.Pictures).Data.Data);
+
+    downloaderMock.Verify(d => d.DownloadImageBytesAsync("https://example.com/show.jpg", It.IsAny<CancellationToken>()), Times.Never);
+  }
+
   private PodcastLibraryManager CreateManager(IPodcastFeedParser parser, IPodcastMediaDownloader downloader)
       => new(parser, downloader, _tagger, _stateStore, NullLogger<PodcastLibraryManager>.Instance, _timeProvider);
 

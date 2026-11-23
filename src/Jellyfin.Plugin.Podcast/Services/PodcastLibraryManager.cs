@@ -254,6 +254,20 @@ public partial class PodcastLibraryManager(
 
       try
       {
+        var episodeCoverBytes = coverArtBytes;
+
+        if (
+          config.DownloadThumbnails &&
+          string.IsNullOrWhiteSpace(episode.ImageUrl) is false &&
+          string.Equals(episode.ImageUrl, feedData.ImageUrl, StringComparison.OrdinalIgnoreCase) is false
+        )
+        {
+          episodeCoverBytes = await _mediaDownloader.DownloadImageBytesAsync(
+            episode.ImageUrl,
+            cancellationToken
+          ).ConfigureAwait(false) ?? coverArtBytes;
+        }
+
         await DownloadAndTagEpisodeAsync(
           podcastDir,
           podcastTitle,
@@ -261,7 +275,7 @@ public partial class PodcastLibraryManager(
           episode,
           episodeGuid,
           trackNumber,
-          coverArtBytes,
+          episodeCoverBytes,
           feedConfig,
           cancellationToken
         ).ConfigureAwait(false);
