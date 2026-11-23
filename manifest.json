@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/assets/logo.png",
     "versions": [
       {
+        "version": "2.0.4.0",
+        "changelog": "- Save per-episode sidecar cover art (\u003Cepisode\u003E.\u003Cext\u003E) so Jellyfin Books and Music libraries display episode covers natively without extra library settings\n- Backfill missing episode sidecars for already-downloaded episodes and delete sidecars on prune/cleanup\n- Harden RSS and Atom artwork detection across iTunes, Media RSS, Google Play, Podcasting 2.0, and channel/entry tags",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/StevanFreeborn/JellyPodcast/releases/download/v2.0.4/jellyfin-plugin-podcast_2.0.4.0.zip",
+        "checksum": "4fab7d169f01919e65d8d49a8abb7037",
+        "timestamp": "2026-11-23T23:27:06Z"
+      },
+      {
         "version": "2.0.3.0",
         "changelog": "- Download episode-specific artwork when available, falling back to podcast cover art\n- Auto-detect embedded cover art MIME type and format (JPEG, PNG, WebP, GIF)\n- Add native Jellyfin episode image provider for Books and Music libraries",
         "targetAbi": "12.0.0.0",
