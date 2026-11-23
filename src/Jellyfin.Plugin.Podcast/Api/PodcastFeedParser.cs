@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Xml;
 using System.Xml.Linq;
 
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,15 @@ public interface IPodcastFeedParser
 /// <param name="logger">Logger instance.</param>
 public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILogger<PodcastFeedParser> logger) : IPodcastFeedParser
 {
+  private static readonly string UserAgentHeaderValue =
+    $"Jellyfin.Plugin.Podcast/{typeof(PodcastFeedParser).Assembly.GetName().Version?.ToString(3) ?? "2.0.0"}";
+  private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(60);
+  private static readonly XmlReaderSettings SafeXmlReaderSettings = new()
+  {
+    DtdProcessing = DtdProcessing.Ignore,
+    XmlResolver = null,
+  };
+
   private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
   private readonly ILogger<PodcastFeedParser> _logger = logger;
 
@@ -53,10 +63,12 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
 
       LogFetchingFeed(_logger, resolvedUrl);
 
-      using var httpClient = _httpClientFactory.CreateClient();
+      using var httpClient = CreateConfiguredClient();
       var response = await httpClient.GetStringAsync(new Uri(resolvedUrl, UriKind.RelativeOrAbsolute), cancellationToken).ConfigureAwait(false);
 
-      var doc = XDocument.Parse(response);
+      using var stringReader = new StringReader(response);
+      using var xmlReader = XmlReader.Create(stringReader, SafeXmlReaderSettings);
+      var doc = XDocument.Load(xmlReader);
       var root = doc.Root;
 
       if (root is null)
@@ -267,7 +279,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
     {
       LogResolvingAppleUrl(_logger, url);
 
-      using var httpClient = _httpClientFactory.CreateClient();
+      using var httpClient = CreateConfiguredClient();
       var htmlContent = await httpClient.GetStringAsync(new Uri(url, UriKind.RelativeOrAbsolute), cancellationToken).ConfigureAwait(false);
 
       const string feedUrlMarker = "\"feedUrl\":\"";
@@ -302,6 +314,15 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
       LogAppleResolveError(_logger, ex);
       return url;
     }
+  }
+
+  private HttpClient CreateConfiguredClient()
+  {
+    var client = _httpClientFactory.CreateClient();
+    client.Timeout = DefaultRequestTimeout;
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgentHeaderValue);
+
+    return client;
   }
 
   [LoggerMessage(Level = LogLevel.Information, Message = "Fetching podcast feed from {Url}")]

@@ -113,7 +113,7 @@ public sealed class PodcastOpmlService(TimeProvider? timeProvider = null) : IPod
 
       if (
         Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri) is false ||
-        uri.Scheme is "http" or "https" is false
+        uri.Scheme is not ("http" or "https")
       )
       {
         continue;
@@ -131,11 +131,13 @@ public sealed class PodcastOpmlService(TimeProvider? timeProvider = null) : IPod
         rawTitle = GetAttributeValue(outline, "text");
       }
 
-      entries.Add(new OpmlFeedEntry
-      {
-        Url = rawUrl,
-        Title = string.IsNullOrWhiteSpace(rawTitle) ? null : rawTitle,
-      });
+      entries.Add(
+        new OpmlFeedEntry
+        {
+          Url = rawUrl,
+          Title = string.IsNullOrWhiteSpace(rawTitle) ? null : rawTitle,
+        }
+      );
     }
 
     return entries;

@@ -324,6 +324,66 @@ public sealed class PodcastFeedParserTests
     await Assert.ThrowsAnyAsync<OperationCanceledException>(() => parser.ParseFeedAsync("https://podcasts.apple.com/us/podcast/show/id123", cts.Token));
   }
 
+  [Fact]
+  public async Task ParseFeedAsync_SendsUserAgentHeader_ForFeedAndApplePodcastsRequests()
+  {
+    const string appleHtml = """<html><script>{"feedUrl":"https:\/\/feeds.example.com\/resolved.xml"}</script></html>""";
+    const string rss = """<rss version="2.0"><channel><title>Agent Show</title></channel></rss>""";
+    var observedUserAgents = new List<string>();
+
+    var parser = CreateParser(
+      (req, _) =>
+      {
+        observedUserAgents.Add(req.Headers.UserAgent.ToString());
+        var url = req.RequestUri!.ToString();
+        return url.Contains("podcasts.apple.com", StringComparison.OrdinalIgnoreCase)
+          ? OkTextResponse(appleHtml)
+          : OkTextResponse(rss);
+      }
+    );
+
+    var result = await parser.ParseFeedAsync("https://podcasts.apple.com/us/podcast/show/id123", TestContext.Current.CancellationToken);
+
+    Assert.NotNull(result);
+    Assert.Equal(2, observedUserAgents.Count);
+    Assert.All(observedUserAgents, ua => Assert.StartsWith("Jellyfin.Plugin.Podcast/", ua, StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task ParseFeedAsync_IgnoresDtdEntities_AndParsesBenignDoctypeFeeds()
+  {
+    const string benignDoctypeRss = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE rss>
+      <rss version="2.0">
+        <channel>
+          <title>Benign Doctype Show</title>
+        </channel>
+      </rss>
+      """;
+
+    const string dtdEntityRss = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE rss [<!ENTITY bomb "expanded">]>
+      <rss version="2.0">
+        <channel>
+          <title>&bomb;</title>
+        </channel>
+      </rss>
+      """;
+
+    var benignParser = CreateParser((_, _) => OkTextResponse(benignDoctypeRss));
+    var benignResult = await benignParser.ParseFeedAsync("https://example.com/benign.xml", TestContext.Current.CancellationToken);
+
+    Assert.NotNull(benignResult);
+    Assert.Equal("Benign Doctype Show", benignResult.Title);
+
+    var entityParser = CreateParser((_, _) => OkTextResponse(dtdEntityRss));
+    var entityResult = await entityParser.ParseFeedAsync("https://example.com/entity.xml", TestContext.Current.CancellationToken);
+
+    Assert.Null(entityResult);
+  }
+
   private static PodcastFeedParser CreateParser(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder)
   {
     var handler = new StubHttpMessageHandler(responder);
