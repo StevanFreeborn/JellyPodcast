@@ -384,6 +384,115 @@ public sealed class PodcastFeedParserTests
     Assert.Null(entityResult);
   }
 
+  [Fact]
+  public async Task ParseFeedAsync_ExtractsEpisodeArtworkAcrossPodcastTags_AndFallsBackWhenEmpty()
+  {
+    const string rss = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0"
+           xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+           xmlns:media="http://search.yahoo.com/mrss/"
+           xmlns:googleplay="http://www.google.com/schemas/play-podcasts/1.0"
+           xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+          <title>Artwork Test Show</title>
+          <podcast:images srcset="https://cdn.example.com/show-p2.webp 1200w, https://cdn.example.com/show-small.webp 300w" />
+          <item>
+            <title>Empty Href</title>
+            <enclosure url="https://cdn.example.com/1.mp3" />
+            <itunes:image href="   " />
+          </item>
+          <item>
+            <title>Inner Itunes</title>
+            <enclosure url="https://cdn.example.com/2.mp3" />
+            <itunes:image>https://cdn.example.com/ep2.jpg</itunes:image>
+          </item>
+          <item>
+            <title>Media Thumbnail</title>
+            <enclosure url="https://cdn.example.com/3.mp3" />
+            <media:thumbnail url="https://cdn.example.com/ep3.png" />
+          </item>
+          <item>
+            <title>Media Content</title>
+            <enclosure url="https://cdn.example.com/4.mp3" />
+            <media:content url="https://cdn.example.com/ep4.mp3" medium="audio" />
+            <media:content url="https://cdn.example.com/ep4.gif" type="image/gif" />
+          </item>
+          <item>
+            <title>Google Play</title>
+            <enclosure url="https://cdn.example.com/5.mp3" />
+            <googleplay:image href="https://cdn.example.com/ep5.jpg" />
+          </item>
+          <item>
+            <title>Podcast Images Srcset</title>
+            <enclosure url="https://cdn.example.com/6.mp3" />
+            <podcast:images srcset="https://cdn.example.com/ep6.webp 1400w" />
+          </item>
+          <item>
+            <title>Item Image Element</title>
+            <enclosure url="https://cdn.example.com/7.mp3" />
+            <image><url>https://cdn.example.com/ep7.jpg</url></image>
+          </item>
+        </channel>
+      </rss>
+      """;
+
+    var parser = CreateParser((_, _) => OkTextResponse(rss));
+    var result = await parser.ParseFeedAsync("https://example.com/art.xml", TestContext.Current.CancellationToken);
+
+    Assert.NotNull(result);
+    Assert.Equal("https://cdn.example.com/show-p2.webp", result.ImageUrl);
+    Assert.Equal(7, result.Episodes.Count);
+    Assert.Equal("https://cdn.example.com/show-p2.webp", result.Episodes[0].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep2.jpg", result.Episodes[1].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep3.png", result.Episodes[2].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep4.gif", result.Episodes[3].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep5.jpg", result.Episodes[4].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep6.webp", result.Episodes[5].ImageUrl);
+    Assert.Equal("https://cdn.example.com/ep7.jpg", result.Episodes[6].ImageUrl);
+  }
+
+  [Fact]
+  public async Task ParseFeedAsync_ExtractsAtomFeedAndEntryArtworkTags()
+  {
+    const string atom = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <feed xmlns="http://www.w3.org/2005/Atom"
+            xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+            xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Atom Artwork Show</title>
+        <logo>https://cdn.example.com/atom-logo.png</logo>
+        <entry>
+          <title>Entry Thumbnail</title>
+          <id>atom-1</id>
+          <link rel="enclosure" href="https://cdn.example.com/atom1.mp3" />
+          <media:thumbnail url="https://cdn.example.com/atom-ep1.png" />
+        </entry>
+        <entry>
+          <title>Entry Icon Link</title>
+          <id>atom-2</id>
+          <link rel="enclosure" href="https://cdn.example.com/atom2.mp3" />
+          <link rel="icon" href="https://cdn.example.com/atom-ep2.jpg" />
+        </entry>
+        <entry>
+          <title>Entry Fallback</title>
+          <id>atom-3</id>
+          <link rel="enclosure" href="https://cdn.example.com/atom3.mp3" />
+        </entry>
+      </feed>
+      """;
+
+    var parser = CreateParser((_, _) => OkTextResponse(atom));
+    var result = await parser.ParseFeedAsync("https://example.com/atom.xml", TestContext.Current.CancellationToken);
+
+    Assert.NotNull(result);
+    Assert.Equal("https://cdn.example.com/atom-logo.png", result.ImageUrl);
+    Assert.Equal(3, result.Episodes.Count);
+    Assert.Equal("https://cdn.example.com/atom-ep1.png", result.Episodes[0].ImageUrl);
+    Assert.Equal("https://cdn.example.com/atom-ep2.jpg", result.Episodes[1].ImageUrl);
+    Assert.Equal("https://cdn.example.com/atom-logo.png", result.Episodes[2].ImageUrl);
+  }
+
   private static PodcastFeedParser CreateParser(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder)
   {
     var handler = new StubHttpMessageHandler(responder);

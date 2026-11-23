@@ -118,6 +118,10 @@ public partial class PodcastCleanupController : ControllerBase
 
           if (
             AudioFileNaming.IsAudioFile(file) ||
+            (
+              ImageFormatDetector.IsSupportedImageFile(file) &&
+              string.Equals(fileName, PodcastMediaDownloader.CoverFileName, StringComparison.OrdinalIgnoreCase) is false
+            ) ||
             string.Equals(fileName, PodcastStateStore.StateFileName, StringComparison.OrdinalIgnoreCase) ||
             fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
           )

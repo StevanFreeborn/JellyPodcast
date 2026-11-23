@@ -23,9 +23,14 @@ public sealed class LibraryRefreshResult
   public int EpisodesDeleted { get; init; }
 
   /// <summary>
-  /// Gets a value indicating whether any audio files were added or removed on disk.
+  /// Gets the total number of episode sidecar artwork files written during refresh.
   /// </summary>
-  public bool HasChanges => EpisodesDownloaded is > 0 || EpisodesDeleted is > 0;
+  public int ImagesUpdated { get; init; }
+
+  /// <summary>
+  /// Gets a value indicating whether any audio or artwork files were added, updated, or removed on disk.
+  /// </summary>
+  public bool HasChanges => EpisodesDownloaded is > 0 || EpisodesDeleted is > 0 || ImagesUpdated is > 0;
 }
 
 /// <summary>
@@ -116,6 +121,7 @@ public partial class PodcastLibraryManager(
 
     var totalDownloaded = 0;
     var totalDeleted = 0;
+    var totalImagesUpdated = 0;
 
     for (var feedIndex = 0; feedIndex < enabledFeeds.Count; feedIndex++)
     {
@@ -139,6 +145,7 @@ public partial class PodcastLibraryManager(
 
         totalDownloaded += feedResult.EpisodesDownloaded;
         totalDeleted += feedResult.EpisodesDeleted;
+        totalImagesUpdated += feedResult.ImagesUpdated;
       }
       catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
       {
@@ -159,6 +166,7 @@ public partial class PodcastLibraryManager(
     {
       EpisodesDownloaded = totalDownloaded,
       EpisodesDeleted = totalDeleted,
+      ImagesUpdated = totalImagesUpdated,
     };
   }
 
@@ -219,6 +227,7 @@ public partial class PodcastLibraryManager(
 
     var totalEpisodes = episodesToProcess.Count;
     var downloadedCount = 0;
+    var imagesUpdatedCount = 0;
 
     for (var index = 0; index < totalEpisodes; index++)
     {
@@ -247,6 +256,21 @@ public partial class PodcastLibraryManager(
 
       if (_stateStore.IsEpisodeDownloaded(podcastDir, episodeGuid))
       {
+        if (
+          config.DownloadThumbnails &&
+          await EnsureEpisodeSidecarImageAsync(
+            podcastDir,
+            episodeGuid,
+            episode,
+            feedData.ImageUrl,
+            coverArtBytes,
+            cancellationToken
+          ).ConfigureAwait(false)
+        )
+        {
+          imagesUpdatedCount++;
+        }
+
         LogSkippingDownloaded(_logger, episode.Title);
         ReportEpisodeProgress(progress, sliceStart, sliceEnd, index + 1, totalEpisodes);
         continue;
@@ -254,19 +278,13 @@ public partial class PodcastLibraryManager(
 
       try
       {
-        var episodeCoverBytes = coverArtBytes;
-
-        if (
-          config.DownloadThumbnails &&
-          string.IsNullOrWhiteSpace(episode.ImageUrl) is false &&
-          string.Equals(episode.ImageUrl, feedData.ImageUrl, StringComparison.OrdinalIgnoreCase) is false
-        )
-        {
-          episodeCoverBytes = await _mediaDownloader.DownloadImageBytesAsync(
-            episode.ImageUrl,
-            cancellationToken
-          ).ConfigureAwait(false) ?? coverArtBytes;
-        }
+        var episodeCoverBytes = await ResolveEpisodeCoverBytesAsync(
+          episode,
+          feedData.ImageUrl,
+          coverArtBytes,
+          config.DownloadThumbnails,
+          cancellationToken
+        ).ConfigureAwait(false);
 
         await DownloadAndTagEpisodeAsync(
           podcastDir,
@@ -310,6 +328,7 @@ public partial class PodcastLibraryManager(
     {
       EpisodesDownloaded = downloadedCount,
       EpisodesDeleted = deletedCount,
+      ImagesUpdated = imagesUpdatedCount,
     };
   }
 
@@ -371,6 +390,11 @@ public partial class PodcastLibraryManager(
     };
 
     _metadataTagger.TagAudioFile(destinationPath, metadata);
+
+    if (coverArtBytes is { Length: > 0 })
+    {
+      await WriteEpisodeSidecarImageAsync(destinationPath, coverArtBytes, cancellationToken).ConfigureAwait(false);
+    }
 
     _stateStore.RecordDownloadedEpisode(
       podcastDir,
@@ -444,6 +468,7 @@ public partial class PodcastLibraryManager(
       {
         if (DeleteFileIfExists(filePath))
         {
+          DeleteEpisodeSidecarImages(filePath);
           deletedCount++;
         }
 
@@ -470,6 +495,7 @@ public partial class PodcastLibraryManager(
 
       if (File.GetLastWriteTimeUtc(filePath) < cutoffUtc && DeleteFileIfExists(filePath))
       {
+        DeleteEpisodeSidecarImages(filePath);
         deletedCount++;
       }
     }
@@ -518,6 +544,7 @@ public partial class PodcastLibraryManager(
 
         if (DeleteFileIfExists(filePath))
         {
+          DeleteEpisodeSidecarImages(filePath);
           deletedCount++;
         }
       }
@@ -550,6 +577,162 @@ public partial class PodcastLibraryManager(
 
     var fraction = (double)completedEpisodes / totalEpisodes;
     progress.Report(sliceStart + ((sliceEnd - sliceStart) * fraction));
+  }
+
+  private async Task<byte[]?> ResolveEpisodeCoverBytesAsync(
+    PodcastEpisode episode,
+    string feedImageUrl,
+    byte[]? showCoverBytes,
+    bool downloadThumbnails,
+    CancellationToken cancellationToken
+  )
+  {
+    if (downloadThumbnails is false)
+    {
+      return null;
+    }
+
+    if (
+      string.IsNullOrWhiteSpace(episode.ImageUrl) is false &&
+      string.Equals(episode.ImageUrl, feedImageUrl, StringComparison.OrdinalIgnoreCase) is false
+    )
+    {
+      return await _mediaDownloader.DownloadImageBytesAsync(
+        episode.ImageUrl,
+        cancellationToken
+      ).ConfigureAwait(false) ?? showCoverBytes;
+    }
+
+    return showCoverBytes;
+  }
+
+  [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Sidecar artwork failures are isolated and logged so episode syncing continues.")]
+  private async Task<bool> EnsureEpisodeSidecarImageAsync(
+    string podcastDir,
+    string episodeGuid,
+    PodcastEpisode episode,
+    string feedImageUrl,
+    byte[]? showCoverBytes,
+    CancellationToken cancellationToken
+  )
+  {
+    var state = _stateStore.Load(podcastDir);
+
+    if (state.Episodes.TryGetValue(episodeGuid, out var entry) is false || string.IsNullOrWhiteSpace(entry.FileName))
+    {
+      return false;
+    }
+
+    var audioPath = Path.Combine(podcastDir, entry.FileName);
+
+    if (File.Exists(audioPath) is false || HasEpisodeSidecarImage(audioPath))
+    {
+      return false;
+    }
+
+    try
+    {
+      var episodeCoverBytes = await ResolveEpisodeCoverBytesAsync(
+        episode,
+        feedImageUrl,
+        showCoverBytes,
+        downloadThumbnails: true,
+        cancellationToken
+      ).ConfigureAwait(false);
+
+      if (episodeCoverBytes is null or { Length: 0 })
+      {
+        return false;
+      }
+
+      await WriteEpisodeSidecarImageAsync(audioPath, episodeCoverBytes, cancellationToken).ConfigureAwait(false);
+      return true;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      throw;
+    }
+    catch (Exception ex)
+    {
+      LogSidecarWriteFailed(_logger, audioPath, ex);
+      return false;
+    }
+  }
+
+  private static bool HasEpisodeSidecarImage(string audioPath)
+  {
+    var directory = Path.GetDirectoryName(audioPath);
+    var baseName = Path.GetFileNameWithoutExtension(audioPath);
+
+    if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(baseName))
+    {
+      return false;
+    }
+
+    foreach (var extension in ImageFormatDetector.SupportedImageExtensions)
+    {
+      if (File.Exists(Path.Combine(directory, $"{baseName}{extension}")))
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private static async Task WriteEpisodeSidecarImageAsync(
+    string audioPath,
+    byte[] imageBytes,
+    CancellationToken cancellationToken
+  )
+  {
+    var directory = Path.GetDirectoryName(audioPath);
+    var baseName = Path.GetFileNameWithoutExtension(audioPath);
+
+    if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(baseName))
+    {
+      return;
+    }
+
+    var extension = ImageFormatDetector.DetectFileExtension(imageBytes);
+    var sidecarPath = Path.Combine(directory, $"{baseName}{extension}");
+    var tempPath = $"{sidecarPath}.tmp";
+
+    try
+    {
+      Directory.CreateDirectory(directory);
+      await File.WriteAllBytesAsync(tempPath, imageBytes, cancellationToken).ConfigureAwait(false);
+      File.Move(tempPath, sidecarPath, overwrite: true);
+      DeleteEpisodeSidecarImages(audioPath, keepPath: sidecarPath);
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      DeleteFileIfExists(tempPath);
+      throw;
+    }
+  }
+
+  private static void DeleteEpisodeSidecarImages(string audioPath, string? keepPath = null)
+  {
+    var directory = Path.GetDirectoryName(audioPath);
+    var baseName = Path.GetFileNameWithoutExtension(audioPath);
+
+    if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(baseName))
+    {
+      return;
+    }
+
+    foreach (var extension in ImageFormatDetector.SupportedImageExtensions)
+    {
+      var candidatePath = Path.Combine(directory, $"{baseName}{extension}");
+
+      if (keepPath is not null && string.Equals(candidatePath, keepPath, StringComparison.OrdinalIgnoreCase))
+      {
+        continue;
+      }
+
+      DeleteFileIfExists(candidatePath);
+    }
   }
 
   private static bool IsEpisodeExpired(DateTime pubDate, DateTime cutoffUtc)
@@ -598,6 +781,9 @@ public partial class PodcastLibraryManager(
 
   [LoggerMessage(Level = LogLevel.Error, Message = "Error downloading or tagging episode: {Title}")]
   private static partial void LogEpisodeError(ILogger logger, string title, Exception exception);
+
+  [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to write sidecar artwork for {AudioPath}")]
+  private static partial void LogSidecarWriteFailed(ILogger logger, string audioPath, Exception exception);
 
   [LoggerMessage(Level = LogLevel.Information, Message = "Downloaded and tagged episode: {FileName}")]
   private static partial void LogEpisodeDownloaded(ILogger logger, string fileName);

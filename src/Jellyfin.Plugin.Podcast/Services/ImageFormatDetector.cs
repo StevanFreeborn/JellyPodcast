@@ -13,6 +13,15 @@ public static class ImageFormatDetector
   private static ReadOnlySpan<byte> RiffSignature => "RIFF"u8;
   private static ReadOnlySpan<byte> WebpSignature => "WEBP"u8;
 
+  private static readonly HashSet<string> SupportedExtensions =
+    new([".jpg", ".jpeg", ".png", ".webp", ".gif"], StringComparer.OrdinalIgnoreCase);
+
+  /// <summary>
+  /// Gets the supported image file extensions recognized for local artwork files.
+  /// </summary>
+  public static IReadOnlyList<string> SupportedImageExtensions { get; } =
+    [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+
   /// <summary>
   /// Detects the <see cref="ImageFormat"/> from leading image magic bytes, defaulting to <see cref="ImageFormat.Jpg"/>.
   /// </summary>
@@ -54,4 +63,26 @@ public static class ImageFormatDetector
     ImageFormat.Webp => "image/webp",
     _ => "image/jpeg",
   };
+
+  /// <summary>
+  /// Detects the lowercase file extension (with leading dot) from leading image magic bytes, defaulting to <c>.jpg</c>.
+  /// </summary>
+  /// <param name="imageBytes">Encoded image header or payload bytes.</param>
+  /// <returns>The detected image file extension.</returns>
+  public static string DetectFileExtension(ReadOnlySpan<byte> imageBytes) => DetectImageFormat(imageBytes) switch
+  {
+    ImageFormat.Png => ".png",
+    ImageFormat.Gif => ".gif",
+    ImageFormat.Webp => ".webp",
+    _ => ".jpg",
+  };
+
+  /// <summary>
+  /// Determines whether <paramref name="filePath"/> has a supported local image file extension.
+  /// </summary>
+  /// <param name="filePath">Path or filename to inspect.</param>
+  /// <returns><c>true</c> if the file extension is a supported image format; otherwise, <c>false</c>.</returns>
+  public static bool IsSupportedImageFile(string? filePath) =>
+    string.IsNullOrWhiteSpace(filePath) is false &&
+    SupportedExtensions.Contains(Path.GetExtension(filePath));
 }

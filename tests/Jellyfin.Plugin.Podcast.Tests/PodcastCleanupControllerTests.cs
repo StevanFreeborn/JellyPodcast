@@ -188,6 +188,50 @@ public sealed class PodcastCleanupControllerTests : IDisposable
   }
 
   [Fact]
+  public void CleanupEpisodes_DeletesEpisodeSidecarImages_AndPreservesShowCover()
+  {
+    var showDir = Path.Combine(_libraryPath, "Sidecar Cleanup Show");
+    Directory.CreateDirectory(showDir);
+
+    var showCoverPath = Path.Combine(showDir, PodcastMediaDownloader.CoverFileName);
+    var ep1Audio = Path.Combine(showDir, "2026-11-23 - Ep1.mp3");
+    var ep1Sidecar = Path.Combine(showDir, "2026-11-23 - Ep1.jpg");
+    var ep2Audio = Path.Combine(showDir, "2026-11-24 - Ep2.m4a");
+    var ep2Sidecar = Path.Combine(showDir, "2026-11-24 - Ep2.png");
+    var ep3Sidecar = Path.Combine(showDir, "2026-11-25 - Ep3.webp");
+
+    File.WriteAllBytes(showCoverPath, [1, 2]);
+    File.WriteAllBytes(ep1Audio, [3, 4]);
+    File.WriteAllBytes(ep1Sidecar, [5, 6]);
+    File.WriteAllBytes(ep2Audio, [7, 8]);
+    File.WriteAllBytes(ep2Sidecar, [9, 10]);
+    File.WriteAllBytes(ep3Sidecar, [11, 12]);
+    _stateStore.RecordDownloadedEpisode(showDir, "ep-1", "2026-11-23 - Ep1.mp3", feedId: "feed-sidecars", feedUrl: "https://example.com/sidecars.xml");
+
+    var config = new PluginConfiguration
+    {
+      LibraryPath = _libraryPath,
+      PodcastFeeds = [
+        new PodcastFeed { Id = "feed-sidecars", Url = "https://example.com/sidecars.xml", Enabled = true }
+      ]
+    };
+
+    var controller = new PodcastCleanupController(NullLogger<PodcastCleanupController>.Instance, () => config);
+    var okResult = Assert.IsType<OkObjectResult>(controller.CleanupEpisodes());
+    var payload = Assert.IsType<CleanupResult>(okResult.Value);
+
+    Assert.Equal(6, payload.FilesDeleted);
+    Assert.Equal(0, payload.DirectoriesDeleted);
+    Assert.True(File.Exists(showCoverPath));
+    Assert.False(File.Exists(ep1Audio));
+    Assert.False(File.Exists(ep1Sidecar));
+    Assert.False(File.Exists(ep2Audio));
+    Assert.False(File.Exists(ep2Sidecar));
+    Assert.False(File.Exists(ep3Sidecar));
+    Assert.False(File.Exists(Path.Combine(showDir, PodcastStateStore.StateFileName)));
+  }
+
+  [Fact]
   public void CleanupOrphanedFeeds_HandlesNullConfigMissingDirectoryAndExceptions()
   {
     var nullController = new PodcastCleanupController(NullLogger<PodcastCleanupController>.Instance, () => null);
