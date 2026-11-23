@@ -1,188 +1,78 @@
 # Contributing to JellyPodcast
 
-Thank you for considering contributing to JellyPodcast! This document provides guidelines and information for developers.
+Thank you for contributing to JellyPodcast! Keep user-facing setup and feature documentation in [README.md](README.md) and API behavior documented in XML comments so this guide stays accurate over time.
 
-## Development Setup
+## Prerequisites
 
-### Prerequisites
+- **.NET SDK**: Version pinned in [global.json](global.json)
+- **Jellyfin Server** (optional, for manual integration testing): Target ABI defined in [Directory.Packages.props](Directory.Packages.props) and [build.yaml](build.yaml)
 
-- .NET 9.0 SDK
-- Jellyfin 10.11.x server (for testing)
-- Basic knowledge of C# and Jellyfin plugin development
+## Repository Layout
 
-### Building from Source
+- `src/` — Jellyfin plugin source (`Jellyfin.Plugin.Podcast.csproj`, controllers, services, scheduled tasks, configuration UI)
+- `tests/` — xUnit v3 unit test suite and coverage settings (`coverage.settings.xml`)
+- `scripts/` — Local verification and release helpers (`test-coverage.cs`, `update-manifest.cs`)
+- `.github/workflows/` — Continuous integration ([ci.yml](.github/workflows/ci.yml)) and release automation ([publish.yml](.github/workflows/publish.yml))
+
+## Local Verification
+
+Run the same checks enforced by CI:
 
 ```bash
-# Clone the repository
-git clone https://github.com/JHoahg/JellyPodcast.git
-cd JellyPodcast
+# Restore NuGet packages and local .NET tools
+dotnet restore
+dotnet tool restore
 
-# Debug build
-dotnet build
+# Verify formatting and analyzer code style
+dotnet format Jellyfin.Plugin.Podcast.slnx --verify-no-changes --no-restore
 
-# Release build
-dotnet build --configuration Release
+# Build solution (zero warnings required)
+dotnet build Jellyfin.Plugin.Podcast.slnx --configuration Release --no-restore
 
-# Clean build
-dotnet clean && dotnet build
+# Run unit tests (or generate Cobertura + HTML coverage report)
+dotnet test --configuration Release --no-build --no-restore
+dotnet run scripts/test-coverage.cs -- -c Release --no-build --no-restore
+
+# Publish plugin + bundled dependencies to ./dist/
+dotnet publish src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj -c Release -o ./dist
 ```
 
-Build output: `bin/Release/net9.0/Jellyfin.Plugin.Podcast.dll`
+## Manual Testing in Jellyfin
 
-### Project Structure
-
-```
-JellyPodcast/
-├── Api/
-│   ├── PodcastFeedParser.cs        # RSS/Atom feed parsing
-│   ├── PodcastStreamController.cs  # Audio wrapping for web player
-│   └── PodcastCleanupController.cs # Episode cleanup endpoint
-├── Configuration/
-│   ├── PluginConfiguration.cs      # Plugin settings
-│   └── configPage.html             # Web UI
-├── Services/
-│   └── PodcastLibraryManager.cs    # Library management & file creation
-├── ScheduledTasks/
-│   └── RefreshPodcastLibraryTask.cs # Auto-refresh task
-└── Plugin.cs                        # Main plugin entry point
-```
-
-## Development Workflow
-
-1. Make your changes
-2. Test locally with a Jellyfin instance
-3. Ensure code compiles without warnings
-4. Update documentation if needed
-5. Commit with descriptive messages
-6. Submit a pull request
-
-## Testing
-
-### Manual Testing
-
-1. Build the plugin
-2. Copy DLL to your Jellyfin plugins directory
-3. Restart Jellyfin
-4. Test the changes in the Jellyfin UI
-
-### Checking Logs
+1. Copy the published assemblies (`Jellyfin.Plugin.Podcast.dll` and `TagLibSharp.dll`) from `./dist/` into your Jellyfin server's plugin folder.
+2. Restart Jellyfin and verify behavior in **Dashboard -> Plugins -> Podcast**.
+3. Check Jellyfin logs for plugin output:
 
 ```bash
 # Docker
 docker logs jellyfin 2>&1 | grep -i podcast
 
-# System service
+# systemd
 journalctl -u jellyfin -f | grep -i podcast
 ```
 
-## Code Style
+## Code Style & Conventions
 
-- Follow standard C# conventions
-- Use XML documentation comments for public methods
-- Keep line length reasonable (no strict limit, but be sensible)
-- Prefer clarity over cleverness
+Compiler and formatting rules are enforced automatically via [.editorconfig](.editorconfig), [tests/.editorconfig](tests/.editorconfig), and [Directory.Build.props](Directory.Build.props) (`AnalysisMode=All`, `EnforceCodeStyleInBuild=true`, `TreatWarningsAsErrors=true`, `CodeAnalysisTreatWarningsAsErrors=true`).
 
-## Pull Request Guidelines
+In addition, please follow these repository conventions:
 
-### Before Submitting
+- **XML documentation**: Document all public types and members cleanly (builds enforce `GenerateDocumentationFile`).
+- **Multi-line parentheses (K&R style)**: Place the opening `(` at the end of the opening line, indent inner lines by 2 spaces, and place the closing `)` on its own line aligned with the opening statement.
+- **Pattern matching**: Prefer `is` / `is not` / relational `is` patterns (`is null`, `is not null`, `is > 0`, etc.) and `is false` instead of `!` for boolean checks.
+- **Time abstraction**: Inject `TimeProvider` (defaulting to `TimeProvider.System`) rather than calling static `DateTime` clock members (`DateTime.UtcNow` / `DateTime.Now`).
 
-- [ ] Code compiles without errors or warnings
-- [ ] Tested with actual podcast feeds
-- [ ] Updated README/documentation if needed
-- [ ] Commit messages are clear and descriptive
+## Pull Requests & Releases
 
-### PR Description
-
-Please include:
-- What changes were made and why
-- Any breaking changes
-- Testing performed
-- Screenshots (if UI changes)
-
-## Architecture Notes
-
-### Feed Parsing
-
-The `PodcastFeedParser` handles:
-- RSS 2.0 with iTunes extensions
-- Atom feeds
-- Apple Podcasts URL resolution
-
-Episode extraction looks for `<enclosure>` tags for media URLs. Episodes without enclosures are skipped.
-
-### File Organization
-
-Episodes are organized as TV shows:
-```
-Podcast Name/
-├── tvshow.nfo
-├── folder.jpg
-└── Season 1/
-    ├── YYYY-MM-DD - Episode Title.strm
-    ├── YYYY-MM-DD - Episode Title.nfo
-    └── YYYY-MM-DD - Episode Title-thumb.jpg
-```
-
-### Web Player Compatibility
-
-For audio podcasts, the plugin can wrap audio in WebM video with static artwork:
-
-1. Creates `.audiourl` files with original audio URL
-2. `.strm` files point to controller endpoint
-3. `PodcastStreamController` wraps audio in WebM (VP8/Opus)
-4. Jellyfin transcodes to HLS for seekable playback
-
-Video podcasts always use direct URLs.
-
-### Scheduled Refresh
-
-The `RefreshPodcastLibraryTask` runs every 2 hours (configurable in code):
-- Fetches latest episodes from all enabled feeds
-- Creates new .strm/.nfo files
-- Downloads thumbnails if enabled
-- Runs cleanup if enabled
-
-## Common Development Tasks
-
-### Adding New Configuration Options
-
-1. Add property to `Configuration/PluginConfiguration.cs`
-2. Add UI control in `Configuration/configPage.html`
-3. Add JavaScript to load/save in configPage.html
-4. Access via `Plugin.Instance?.Configuration?.PropertyName`
-
-### Supporting New Feed Elements
-
-1. Modify `PodcastFeedParser.ParseRssFeed()` or `ParseAtomFeed()`
-2. Add new properties to `PodcastFeedData` or `PodcastEpisode`
-3. Update NFO generation in `PodcastLibraryManager`
-
-### Debugging Tips
-
-**Issue: Files created but not appearing**
-- Check library type (must be "Shows", not "Movies")
-- Verify Season folder structure exists
-- Check Jellyfin scanner logs
-
-**Issue: Feed parsing errors**
-- Test feed URL directly: `curl -s "URL" | head -100`
-- Verify `<enclosure>` tags exist
-- Check for valid XML: `curl -s "URL" | xmllint --format -`
+- Include or update unit tests in `tests/` for any functional change and verify all CI checks pass locally before opening a pull request targeting `main`.
+- Update [README.md](README.md) when user-facing configuration, endpoints, or behavior change.
+- For releases, `<Version>` in [Jellyfin.Plugin.Podcast.csproj](src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj) is the single source of truth; release packaging, checksums, and [manifest.json](manifest.json) updates are handled by [.github/workflows/publish.yml](.github/workflows/publish.yml) using metadata and release notes from [build.yaml](build.yaml).
 
 ## Resources
 
 - [Jellyfin Plugin SDK](https://github.com/jellyfin/jellyfin-plugin-sdk)
 - [Jellyfin Plugin Documentation](https://jellyfin.org/docs/general/server/plugins/)
-- [CLAUDE.md](CLAUDE.md) - Detailed developer documentation
-- [RESEARCH.md](RESEARCH.md) - Background research on audio playback issues
-
-## Questions?
-
-Feel free to:
-- Open an issue for bugs or feature requests
-- Start a discussion for general questions
-- Check existing issues and discussions first
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the MIT License ([LICENSE](LICENSE)).
