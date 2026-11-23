@@ -1,0 +1,11 @@
+[
+  {
+    "guid": "a3af35b9-8c3f-4349-8fcb-18561540fbfc",
+    "name": "Podcast",
+    "description": "Universal podcast support for Jellyfin via RSS/Atom feeds with native audio downloads and metadata tagging",
+    "overview": "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries.",
+    "owner": "StevanFreeborn",
+    "category": "General",
+    "versions": []
+  }
+]
