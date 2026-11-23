@@ -1,0 +1,57 @@
+name: CI
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-test:
+    name: Build, Test & Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '11.0.x'
+      - name: Restore Dependencies & Tools
+        run: |
+          dotnet restore
+          dotnet tool restore
+      - name: Verify Formatting
+        run: dotnet format Jellyfin.Plugin.Podcast.slnx --verify-no-changes --no-restore
+      - name: Build Solution
+        run: dotnet build Jellyfin.Plugin.Podcast.slnx -c Release --no-restore
+      - name: Run Tests & Coverage Report
+        run: dotnet run scripts/test-coverage.cs -- -c Release --no-build --no-restore
+      - name: Publish Coverage Summary
+        if: always()
+        run: |
+          if [ -f TestResults/CoverageReport/SummaryGithub.md ]; then
+            cat TestResults/CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: ./TestResults/CoverageReport/
+          retention-days: 14
+      - name: Publish Plugin
+        run: |
+          dotnet publish src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj -c Release --no-restore -o ./dist
+          test -f ./dist/Jellyfin.Plugin.Podcast.dll
+          test -f ./dist/TagLibSharp.dll
+      - name: Upload Plugin Package
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-dist
+          path: ./dist/
+          retention-days: 14

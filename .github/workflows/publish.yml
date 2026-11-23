@@ -1,0 +1,148 @@
+name: Publish
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*.*'
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: 'Optional release changelog override for manifest.json'
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Build, Release & Update Plugin Repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '11.0.x'
+      - name: Resolve & Validate Version
+        id: meta
+        run: |
+          RAW_CSPROJ_VERSION=$(dotnet msbuild src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj -getProperty:Version | tr -d '[:space:]')
+
+          if [[ "$RAW_CSPROJ_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${RAW_CSPROJ_VERSION}.0"
+          elif [[ "$RAW_CSPROJ_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${RAW_CSPROJ_VERSION}"
+          else
+            echo "Invalid <Version> '${RAW_CSPROJ_VERSION}' in Jellyfin.Plugin.Podcast.csproj. Expected X.Y.Z or X.Y.Z.W." >&2
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+            RAW_TAG="${TAG#v}"
+            if [[ "$RAW_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              TAG_VERSION="${RAW_TAG}.0"
+            elif [[ "$RAW_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              TAG_VERSION="${RAW_TAG}"
+            else
+              echo "Invalid tag format '${TAG}'. Expected vX.Y.Z or vX.Y.Z.W." >&2
+              exit 1
+            fi
+
+            if [ "$TAG_VERSION" != "$VERSION" ]; then
+              echo "Tag version '${TAG_VERSION}' does not match <Version>${VERSION}</Version> in Jellyfin.Plugin.Podcast.csproj." >&2
+              exit 1
+            fi
+          else
+            TAG="v${RAW_CSPROJ_VERSION}"
+          fi
+
+          ZIP_NAME="jellyfin-plugin-podcast_${VERSION}.zip"
+          {
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "zip_name=${ZIP_NAME}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Restore Dependencies
+        run: dotnet restore
+      - name: Verify Formatting
+        run: dotnet format Jellyfin.Plugin.Podcast.slnx --verify-no-changes --no-restore
+      - name: Build Solution
+        run: dotnet build Jellyfin.Plugin.Podcast.slnx -c Release --no-restore
+      - name: Run Tests
+        run: dotnet test -c Release --no-build --no-restore
+      - name: Publish & Package Plugin ZIP
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          ZIP_NAME="${{ steps.meta.outputs.zip_name }}"
+
+          dotnet publish src/Jellyfin.Plugin.Podcast/Jellyfin.Plugin.Podcast.csproj \
+            -c Release \
+            --no-restore \
+            -o ./dist
+
+          test -f ./dist/Jellyfin.Plugin.Podcast.dll
+          test -f ./dist/TagLibSharp.dll
+
+          rm -rf ./stage
+          mkdir -p ./stage
+          cp ./dist/Jellyfin.Plugin.Podcast.dll ./stage/
+          cp ./dist/TagLibSharp.dll ./stage/
+          cp ./LICENSE ./stage/
+          cp ./THIRD-PARTY-NOTICES.md ./stage/
+
+          dotnet run scripts/update-manifest.cs -- \
+            --write-meta \
+            --build-yaml build.yaml \
+            --version "$VERSION" \
+            --output ./stage/meta.json
+
+          (cd ./stage && zip -r "../${ZIP_NAME}" .)
+          md5sum "${ZIP_NAME}" > "${ZIP_NAME}.md5"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: JellyPodcast ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          files: |
+            ${{ steps.meta.outputs.zip_name }}
+            ${{ steps.meta.outputs.zip_name }}.md5
+      - name: Update manifest.json on main
+        env:
+          INPUT_CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP_NAME="${{ steps.meta.outputs.zip_name }}"
+          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${ZIP_NAME}"
+
+          cp build.yaml /tmp/build.yaml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          dotnet run scripts/update-manifest.cs -- \
+            --update-manifest \
+            --build-yaml /tmp/build.yaml \
+            --manifest manifest.json \
+            --version "$VERSION" \
+            --zip "$ZIP_NAME" \
+            --source-url "$SOURCE_URL" \
+            --changelog "$INPUT_CHANGELOG"
+
+          if ! git diff --quiet manifest.json; then
+            git add manifest.json
+            git commit -m "chore: update manifest.json for v${VERSION} [skip ci]"
+            git pull --rebase origin main
+            git push origin main
+          fi

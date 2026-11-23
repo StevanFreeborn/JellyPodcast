@@ -1,24 +1,19 @@
 ---
-version: "1.0.0"
 name: "Podcast"
-guid: "677e8667-ef05-4d2a-88d0-3a920951ca8d"
-targetAbi: "10.11.0.0"
-owner: "JHoahg"
-description: "Universal podcast support for Jellyfin via RSS/Atom feeds with automatic web player compatibility"
-overview: "Add any podcast to Jellyfin using RSS or Atom feeds. Automatically organizes podcasts as TV series with proper episode metadata. Features web player compatibility mode for smooth audio playback, Apple Podcasts URL support, and automatic episode refresh."
-category: "Metadata"
+guid: "a3af35b9-8c3f-4349-8fcb-18561540fbfc"
+targetAbi: "12.4.0.0"
+owner: "StevanFreeborn"
+description: "Universal podcast support for Jellyfin via RSS/Atom feeds with native audio downloads and metadata tagging"
+overview: "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries."
+category: "General"
 changelog: |
-  ## 1.0.0
-  - Initial release
-  - RSS 2.0 and Atom feed support with iTunes extensions
-  - Apple Podcasts URL auto-resolution to RSS feeds
-  - Automatic episode refresh every 2 hours
-  - Web player compatibility mode (Auto/Always On/Always Off)
-  - Audio wrapping in WebM video for web player support
-  - Season 1 folder organization for proper TV show recognition
-  - Thumbnail downloads with episode-specific images
-  - NFO metadata generation with season/episode tags
-  - Auto-cleanup of old episodes with configurable retention
-  - Configurable episode limits per podcast
-  - Manual cleanup button for episode management
-  - Support for both audio and video podcasts
+  ## 2.0.0
+  - Rewrite plugin as a native audio downloader and metadata tagger
+  - Stream audio enclosures (.mp3, .m4a, .aac, .ogg, .opus) atomically to disk
+  - Embed ID3v2/Vorbis/MP4 metadata and cover artwork using TagLibSharp
+  - Track downloaded episodes deterministically in .podcast_state.json
+  - Support Jellyfin Books (recommended for resume) and Music libraries
+  - Add OPML 2.0 import and export for Pocket Casts and podcast client migrations
+  - Automatically queue Jellyfin library scans when episodes are added or removed
+  - Fix per-feed auto-cleanup override (Use global / Enabled / Disabled)
+  - Add orphaned feed directory cleanup endpoint and automated xUnit test suite
