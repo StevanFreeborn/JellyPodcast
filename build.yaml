@@ -8,6 +8,11 @@ overview: "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. 
 category: "General"
 imageUrl: "https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/assets/logo.png"
 changelog: |
+  ## 2.0.4
+  - Save per-episode sidecar cover art (<episode>.<ext>) so Jellyfin Books and Music libraries display episode covers natively without extra library settings
+  - Backfill missing episode sidecars for already-downloaded episodes and delete sidecars on prune/cleanup
+  - Harden RSS and Atom artwork detection across iTunes, Media RSS, Google Play, Podcasting 2.0, and channel/entry tags
+
   ## 2.0.3
   - Download episode-specific artwork when available, falling back to podcast cover art
   - Auto-detect embedded cover art MIME type and format (JPEG, PNG, WebP, GIF)

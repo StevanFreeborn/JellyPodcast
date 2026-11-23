@@ -90,7 +90,9 @@ public sealed class PodcastLibraryManagerTests : IDisposable
       new[]
       {
         ".podcast_state.json",
+        "2026-11-20 - Pilot Episode.jpg",
         "2026-11-20 - Pilot Episode.mp3",
+        "2026-11-23 - Second Episode.jpg",
         "2026-11-23 - Second Episode.mp3",
         "cover.jpg"
       },
@@ -713,7 +715,142 @@ public sealed class PodcastLibraryManagerTests : IDisposable
     Assert.Equal("image/jpeg", Assert.Single(ep3Tag.Tag.Pictures).MimeType);
     Assert.Equal(showCoverBytes, Assert.Single(ep3Tag.Tag.Pictures).Data.Data);
 
+    var ep1Sidecar = Path.ChangeExtension(ep1File, ".png");
+    var ep2Sidecar = Path.ChangeExtension(ep2File, ".jpg");
+    var ep3Sidecar = Path.ChangeExtension(ep3File, ".jpg");
+    Assert.True(File.Exists(ep1Sidecar));
+    Assert.True(File.Exists(ep2Sidecar));
+    Assert.True(File.Exists(ep3Sidecar));
+    Assert.Equal(episodeCoverBytes, await File.ReadAllBytesAsync(ep1Sidecar, TestContext.Current.CancellationToken));
+    Assert.Equal(showCoverBytes, await File.ReadAllBytesAsync(ep2Sidecar, TestContext.Current.CancellationToken));
+    Assert.Equal(showCoverBytes, await File.ReadAllBytesAsync(ep3Sidecar, TestContext.Current.CancellationToken));
+
     downloaderMock.Verify(d => d.DownloadImageBytesAsync("https://example.com/show.jpg", It.IsAny<CancellationToken>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task RefreshLibraryAsync_BackfillsMissingSidecarArtwork_ForAlreadyDownloadedEpisodes()
+  {
+    byte[] episodeCoverBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x77];
+
+    var feed = new PodcastFeed
+    {
+      Id = "feed-backfill",
+      Url = "https://example.com/backfill.xml",
+      CustomName = "Backfill Show",
+      Enabled = true,
+    };
+
+    var parserMock = new Mock<IPodcastFeedParser>();
+    parserMock.Setup(p => p.ParseFeedAsync(feed.Url, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(
+        new PodcastFeedData
+        {
+          Title = "Backfill Show",
+          ImageUrl = "https://example.com/show.jpg",
+          Episodes =
+          [
+            new PodcastEpisode
+            {
+              Guid = "ep-existing",
+              Title = "Existing Episode",
+              MediaUrl = "https://example.com/ep.mp3",
+              MediaType = "audio/mpeg",
+              ImageUrl = "https://example.com/ep.png",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-1),
+            },
+          ],
+        }
+      );
+
+    var downloaderMock = CreateDownloaderMock([0xFF, 0xD8, 0xFF, 0xE0]);
+    downloaderMock
+      .Setup(d => d.DownloadImageBytesAsync("https://example.com/ep.png", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(episodeCoverBytes);
+
+    var manager = CreateManager(parserMock.Object, downloaderMock.Object);
+
+    var initialConfig = CreateConfig(feed);
+    initialConfig.DownloadThumbnails = false;
+    var firstResult = await manager.RefreshLibraryAsync(initialConfig, TestContext.Current.CancellationToken);
+    Assert.Equal(1, firstResult.EpisodesDownloaded);
+    Assert.Equal(0, firstResult.ImagesUpdated);
+
+    var podcastDir = Path.Combine(_libraryPath, "Backfill Show");
+    var mp3File = Assert.Single(Directory.GetFiles(podcastDir, "*.mp3"));
+    var expectedSidecar = Path.ChangeExtension(mp3File, ".png");
+    Assert.False(File.Exists(expectedSidecar));
+
+    var enabledConfig = CreateConfig(feed);
+    enabledConfig.DownloadThumbnails = true;
+    var backfillResult = await manager.RefreshLibraryAsync(enabledConfig, TestContext.Current.CancellationToken);
+    Assert.Equal(0, backfillResult.EpisodesDownloaded);
+    Assert.Equal(1, backfillResult.ImagesUpdated);
+    Assert.True(backfillResult.HasChanges);
+    Assert.True(File.Exists(expectedSidecar));
+    Assert.Equal(episodeCoverBytes, await File.ReadAllBytesAsync(expectedSidecar, TestContext.Current.CancellationToken));
+
+    var thirdResult = await manager.RefreshLibraryAsync(enabledConfig, TestContext.Current.CancellationToken);
+    Assert.Equal(0, thirdResult.ImagesUpdated);
+    Assert.False(thirdResult.HasChanges);
+  }
+
+  [Fact]
+  public async Task RefreshLibraryAsync_DeletesEpisodeSidecars_WhenPruningExpiredAndExcessEpisodes()
+  {
+    var podcastDir = Path.Combine(_libraryPath, "Sidecar Prune Show");
+    Directory.CreateDirectory(podcastDir);
+
+    var showCoverPath = Path.Combine(podcastDir, PodcastMediaDownloader.CoverFileName);
+    await File.WriteAllBytesAsync(showCoverPath, [0xFF, 0xD8, 0xFF, 0xE0], TestContext.Current.CancellationToken);
+
+    var expiredAudio = Path.Combine(podcastDir, "2025-01-01 - Expired.mp3");
+    var expiredSidecar = Path.Combine(podcastDir, "2025-01-01 - Expired.png");
+    var excessAudio = Path.Combine(podcastDir, "2026-11-20 - Excess.mp3");
+    var excessSidecar = Path.Combine(podcastDir, "2026-11-20 - Excess.webp");
+    var keepAudio = Path.Combine(podcastDir, "2026-11-22 - Keep.mp3");
+    var keepSidecar = Path.Combine(podcastDir, "2026-11-22 - Keep.jpg");
+
+    await File.WriteAllBytesAsync(expiredAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(expiredSidecar, [0x89, 0x50], TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(excessAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(excessSidecar, [0x52, 0x49], TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(keepAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(keepSidecar, [0xFF, 0xD8], TestContext.Current.CancellationToken);
+
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-expired", Path.GetFileName(expiredAudio), FixedUtcNow.UtcDateTime.AddDays(-60));
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-excess", Path.GetFileName(excessAudio), FixedUtcNow.UtcDateTime.AddDays(-3));
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-keep", Path.GetFileName(keepAudio), FixedUtcNow.UtcDateTime.AddDays(-1));
+
+    var feed = new PodcastFeed
+    {
+      Id = "feed-sidecar-prune",
+      Url = "https://example.com/sidecar-prune.xml",
+      CustomName = "Sidecar Prune Show",
+      Enabled = true,
+    };
+
+    var parserMock = new Mock<IPodcastFeedParser>();
+    parserMock.Setup(p => p.ParseFeedAsync(feed.Url, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PodcastFeedData { Title = "Sidecar Prune Show", Episodes = [] });
+
+    var manager = CreateManager(parserMock.Object, CreateDownloaderMock(null).Object);
+    var config = CreateConfig(feed);
+    config.EnableAutoCleanup = true;
+    config.DaysToKeepEpisodes = 30;
+    config.MaxEpisodesPerPodcast = 1;
+    config.DownloadThumbnails = false;
+
+    var result = await manager.RefreshLibraryAsync(config, TestContext.Current.CancellationToken);
+
+    Assert.Equal(2, result.EpisodesDeleted);
+    Assert.False(File.Exists(expiredAudio));
+    Assert.False(File.Exists(expiredSidecar));
+    Assert.False(File.Exists(excessAudio));
+    Assert.False(File.Exists(excessSidecar));
+    Assert.True(File.Exists(keepAudio));
+    Assert.True(File.Exists(keepSidecar));
+    Assert.True(File.Exists(showCoverPath));
   }
 
   private PodcastLibraryManager CreateManager(IPodcastFeedParser parser, IPodcastMediaDownloader downloader)

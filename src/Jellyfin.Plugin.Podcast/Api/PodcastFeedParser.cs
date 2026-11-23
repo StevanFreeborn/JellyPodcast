@@ -111,6 +111,9 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
     }
 
     var itunesNs = XNamespace.Get("http://www.itunes.com/dtds/podcast-1.0.dtd");
+    var mediaNs = XNamespace.Get("http://search.yahoo.com/mrss/");
+    var googlePlayNs = XNamespace.Get("http://www.google.com/schemas/play-podcasts/1.0");
+    var podcastNs = XNamespace.Get("https://podcastindex.org/namespace/1.0");
 
     var feed = new PodcastFeedData
     {
@@ -118,9 +121,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
       Title = channel.Element("title")?.Value ?? "Unknown Podcast",
       Description = channel.Element("description")?.Value ?? string.Empty,
       Author = channel.Element(itunesNs + "author")?.Value ?? channel.Element("author")?.Value ?? string.Empty,
-      ImageUrl = channel.Element(itunesNs + "image")?.Attribute("href")?.Value
-        ?? channel.Element("image")?.Element("url")?.Value
-        ?? string.Empty,
+      ImageUrl = ExtractImageUrl(channel, itunesNs, mediaNs, googlePlayNs, podcastNs) ?? string.Empty,
       Language = channel.Element("language")?.Value ?? "en",
       Episodes = [],
     };
@@ -148,7 +149,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
         MediaType = enclosure.Attribute("type")?.Value ?? "audio/mpeg",
         MediaLength = ParseLong(enclosure.Attribute("length")?.Value),
         Duration = ParseDuration(item.Element(itunesNs + "duration")?.Value),
-        ImageUrl = item.Element(itunesNs + "image")?.Attribute("href")?.Value ?? feed.ImageUrl,
+        ImageUrl = ExtractImageUrl(item, itunesNs, mediaNs, googlePlayNs, podcastNs) ?? feed.ImageUrl,
         Guid = string.IsNullOrWhiteSpace(rawGuid) is false ? rawGuid.Trim() : mediaUrl,
       };
 
@@ -162,6 +163,10 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
   private PodcastFeedData? ParseAtomFeed(XDocument doc, string feedUrl)
   {
     var atomNs = XNamespace.Get("http://www.w3.org/2005/Atom");
+    var itunesNs = XNamespace.Get("http://www.itunes.com/dtds/podcast-1.0.dtd");
+    var mediaNs = XNamespace.Get("http://search.yahoo.com/mrss/");
+    var googlePlayNs = XNamespace.Get("http://www.google.com/schemas/play-podcasts/1.0");
+    var podcastNs = XNamespace.Get("https://podcastindex.org/namespace/1.0");
     var root = doc.Root;
 
     if (root is null)
@@ -175,9 +180,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
       Title = root.Element(atomNs + "title")?.Value ?? "Unknown Podcast",
       Description = root.Element(atomNs + "subtitle")?.Value ?? string.Empty,
       Author = root.Element(atomNs + "author")?.Element(atomNs + "name")?.Value ?? string.Empty,
-      ImageUrl = root.Elements(atomNs + "link")
-        .FirstOrDefault(e => e.Attribute("rel")?.Value is "icon")
-        ?.Attribute("href")?.Value ?? string.Empty,
+      ImageUrl = ExtractImageUrl(root, itunesNs, mediaNs, googlePlayNs, podcastNs, atomNs) ?? string.Empty,
       Language = "en",
       Episodes = [],
     };
@@ -203,7 +206,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
         MediaUrl = mediaUrl,
         MediaType = link.Attribute("type")?.Value ?? "audio/mpeg",
         MediaLength = ParseLong(link.Attribute("length")?.Value),
-        ImageUrl = feed.ImageUrl,
+        ImageUrl = ExtractImageUrl(entry, itunesNs, mediaNs, googlePlayNs, podcastNs, atomNs) ?? feed.ImageUrl,
         Guid = string.IsNullOrWhiteSpace(rawId) is false ? rawId.Trim() : mediaUrl,
       };
 
@@ -212,6 +215,138 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
 
     LogParsedAtom(_logger, feed.Title, feed.Episodes.Count);
     return feed;
+  }
+
+  private static string? ExtractImageUrl(
+    XElement container,
+    XNamespace itunesNs,
+    XNamespace mediaNs,
+    XNamespace googlePlayNs,
+    XNamespace podcastNs,
+    XNamespace? atomNs = null
+  )
+  {
+    foreach (var element in container.Elements(itunesNs + "image"))
+    {
+      if (TryTrimNonEmpty(element.Attribute("href")?.Value, out var href))
+      {
+        return href;
+      }
+
+      if (TryTrimNonEmpty(element.Value, out var innerUrl))
+      {
+        return innerUrl;
+      }
+    }
+
+    foreach (var element in container.Elements(mediaNs + "thumbnail"))
+    {
+      if (TryTrimNonEmpty(element.Attribute("url")?.Value, out var thumbnailUrl))
+      {
+        return thumbnailUrl;
+      }
+    }
+
+    foreach (var element in container.Elements(mediaNs + "content"))
+    {
+      var medium = element.Attribute("medium")?.Value;
+      var mimeType = element.Attribute("type")?.Value;
+      var isImageContent =
+        string.Equals(medium, "image", StringComparison.OrdinalIgnoreCase) ||
+        (mimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ?? false);
+
+      if (isImageContent && TryTrimNonEmpty(element.Attribute("url")?.Value, out var contentUrl))
+      {
+        return contentUrl;
+      }
+    }
+
+    foreach (var element in container.Elements(googlePlayNs + "image"))
+    {
+      if (TryTrimNonEmpty(element.Attribute("href")?.Value, out var playHref))
+      {
+        return playHref;
+      }
+    }
+
+    foreach (var element in container.Elements(podcastNs + "images"))
+    {
+      if (TryExtractFirstSrcsetUrl(element.Attribute("srcset")?.Value, out var srcsetUrl))
+      {
+        return srcsetUrl;
+      }
+    }
+
+    foreach (var element in container.Elements("image"))
+    {
+      if (TryTrimNonEmpty(element.Element("url")?.Value, out var imageUrl))
+      {
+        return imageUrl;
+      }
+
+      if (TryTrimNonEmpty(element.Attribute("href")?.Value, out var imageHref))
+      {
+        return imageHref;
+      }
+    }
+
+    if (atomNs is not null)
+    {
+      foreach (var element in container.Elements(atomNs + "link"))
+      {
+        if (
+          string.Equals(element.Attribute("rel")?.Value, "icon", StringComparison.OrdinalIgnoreCase) &&
+          TryTrimNonEmpty(element.Attribute("href")?.Value, out var iconHref)
+        )
+        {
+          return iconHref;
+        }
+      }
+
+      if (TryTrimNonEmpty(container.Element(atomNs + "logo")?.Value, out var logoUrl))
+      {
+        return logoUrl;
+      }
+
+      if (TryTrimNonEmpty(container.Element(atomNs + "icon")?.Value, out var iconUrl))
+      {
+        return iconUrl;
+      }
+    }
+
+    return null;
+  }
+
+  private static bool TryExtractFirstSrcsetUrl(string? srcset, out string url)
+  {
+    if (string.IsNullOrWhiteSpace(srcset) is false)
+    {
+      foreach (var entry in srcset.Split(','))
+      {
+        var tokens = entry.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
+        if (tokens.Length is > 0)
+        {
+          url = tokens[0];
+          return true;
+        }
+      }
+    }
+
+    url = string.Empty;
+    return false;
+  }
+
+  private static bool TryTrimNonEmpty(string? value, out string trimmed)
+  {
+    if (string.IsNullOrWhiteSpace(value) is false)
+    {
+      trimmed = value.Trim();
+      return true;
+    }
+
+    trimmed = string.Empty;
+    return false;
   }
 
   private static DateTime ParsePubDate(string? dateStr)
