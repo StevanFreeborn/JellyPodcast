@@ -87,7 +87,10 @@ if (mode is "write-meta")
     Version = normalizedVersion,
     TargetAbi = metadata.TargetAbi,
     Timestamp = timestamp,
+    Changelog = ExtractChangelog(metadata.Changelog, normalizedVersion),
     Status = "Active",
+    AutoUpdate = true,
+    Assemblies = ["Jellyfin.Plugin.Podcast.dll", "TagLibSharp.dll"],
   };
 
   var dir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
@@ -264,7 +267,7 @@ static BuildMetadata ParseBuildYaml(string[] lines)
       inChangelog = false;
     }
 
-    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("---", StringComparison.Ordinal) || line.StartsWith('#', StringComparison.Ordinal))
+    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("---", StringComparison.Ordinal) || line.StartsWith('#'))
     {
       continue;
     }
@@ -284,7 +287,7 @@ static BuildMetadata ParseBuildYaml(string[] lines)
       continue;
     }
 
-    if (value.Length is >= 2 && value.StartsWith('"', StringComparison.Ordinal) && value.EndsWith('"', StringComparison.Ordinal))
+    if (value.Length is >= 2 && value.StartsWith('"') && value.EndsWith('"'))
     {
       value = value[1..^1];
     }
@@ -295,7 +298,7 @@ static BuildMetadata ParseBuildYaml(string[] lines)
   return new BuildMetadata(
     Guid: values.GetValueOrDefault("guid", string.Empty),
     Name: values.GetValueOrDefault("name", string.Empty),
-    TargetAbi: values.GetValueOrDefault("targetAbi", "12.4.0.0"),
+    TargetAbi: values.GetValueOrDefault("targetAbi", "12.0.0.0"),
     Owner: values.GetValueOrDefault("owner", string.Empty),
     Category: values.GetValueOrDefault("category", "General"),
     Description: values.GetValueOrDefault("description", string.Empty),
@@ -335,7 +338,10 @@ internal sealed class PluginMeta
   public string Version { get; set; } = string.Empty;
   public string TargetAbi { get; set; } = string.Empty;
   public string Timestamp { get; set; } = string.Empty;
+  public string Changelog { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
+  public bool AutoUpdate { get; set; } = true;
+  public List<string> Assemblies { get; set; } = [];
 }
 
 internal sealed class ManifestPlugin

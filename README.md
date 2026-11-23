@@ -2,7 +2,7 @@
 
 A Jellyfin plugin that downloads podcast episodes from RSS, Atom, and Apple Podcasts feeds and tags them for use in Jellyfin Books or Music libraries.
 
-Targets Jellyfin 12.4.x on .NET 11.0.
+Targets Jellyfin 12.4.x on .NET 10.0.
 
 ## Overview
 
@@ -29,22 +29,22 @@ This lets Jellyfin install and update the plugin directly from the web dashboard
 2. Click **Add** (`+`) and enter:
    - **Repository Name**: `JellyPodcast`
    - **Repository URL**: `https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/manifest.json`
-3. Open **Catalog**, find **Podcast**, and click **Install**.
+3. Open **Catalog**, find **JellyPodcast**, and click **Install**.
 4. Restart Jellyfin.
 
 ### Manual Release Install
 
 1. Download the `jellyfin-plugin-podcast_*.zip` archive from [GitHub Releases](https://github.com/StevanFreeborn/JellyPodcast/releases).
 2. Extract its contents (`Jellyfin.Plugin.Podcast.dll`, `TagLibSharp.dll`, `meta.json`, license files) into a plugin directory inside your Jellyfin plugins path:
-   - **Docker**: `/config/plugins/Podcast_2.0.0.0/`
-   - **Linux**: `/var/lib/jellyfin/plugins/Podcast_2.0.0.0/`
-   - **Windows**: `%ProgramData%\Jellyfin\Server\plugins\Podcast_2.0.0.0\`
-   - **macOS**: `~/Library/Application Support/jellyfin/plugins/Podcast_2.0.0.0/`
+   - **Docker**: `/config/plugins/JellyPodcast_2.0.1.0/`
+   - **Linux**: `/var/lib/jellyfin/plugins/JellyPodcast_2.0.1.0/`
+   - **Windows**: `%ProgramData%\Jellyfin\Server\plugins\JellyPodcast_2.0.1.0\`
+   - **macOS**: `~/Library/Application Support/jellyfin/plugins/JellyPodcast_2.0.1.0/`
 3. Restart Jellyfin.
 
 ### From Source
 
-Requires the .NET 11.0 SDK.
+Requires the .NET 10.0 SDK.
 
 ```bash
 git clone https://github.com/StevanFreeborn/JellyPodcast.git
@@ -56,7 +56,7 @@ Copy `dist/Jellyfin.Plugin.Podcast.dll` and `dist/TagLibSharp.dll` to your Jelly
 
 ## Setup
 
-1. Open **Dashboard -> Plugins -> Podcast**.
+1. Open **Dashboard -> Plugins -> JellyPodcast**.
 2. Set **Library Path** (default: `/config/data/podcasts`). For Docker, use a path inside the container.
 3. Add one or more feed URLs (RSS, Atom, or Apple Podcasts) — or click **Import OPML** to load subscriptions from Pocket Casts or another podcast app — review the list, and click **Save**.
 4. Go to **Dashboard -> Scheduled Tasks** and run **Refresh Podcast Library**.

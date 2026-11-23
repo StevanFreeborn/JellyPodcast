@@ -23,7 +23,7 @@ public class PodcastState
   /// Gets or sets the map of episode GUIDs to downloaded episode state records.
   /// </summary>
   [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Required for System.Text.Json deserialization.")]
-  public Dictionary<string, PodcastEpisodeState> Episodes { get; set; } = [with(StringComparer.Ordinal)];
+  public Dictionary<string, PodcastEpisodeState> Episodes { get; set; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -152,7 +152,7 @@ public class PodcastStateStore(TimeProvider? timeProvider = null) : IPodcastStat
 
       loaded.Episodes = loaded.Episodes is not null
         ? new Dictionary<string, PodcastEpisodeState>(loaded.Episodes, StringComparer.Ordinal)
-        : [with(StringComparer.Ordinal)];
+        : new Dictionary<string, PodcastEpisodeState>(StringComparer.Ordinal);
 
       return loaded;
     }
