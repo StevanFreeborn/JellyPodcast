@@ -13,6 +13,7 @@ var versionArg = string.Empty;
 var zipPath = string.Empty;
 var sourceUrl = string.Empty;
 var changelogArg = string.Empty;
+var imagePathArg = string.Empty;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -45,6 +46,9 @@ for (var i = 0; i < args.Length; i++)
       break;
     case "--changelog":
       changelogArg = i + 1 < args.Length ? args[++i] : string.Empty;
+      break;
+    case "--image-path":
+      imagePathArg = RequireValue(args, ref i, arg);
       break;
     default:
       Console.Error.WriteLine($"Unknown argument '{arg}'.");
@@ -90,6 +94,7 @@ if (mode is "write-meta")
     Changelog = ExtractChangelog(metadata.Changelog, normalizedVersion),
     Status = "Active",
     AutoUpdate = true,
+    ImagePath = string.IsNullOrWhiteSpace(imagePathArg) ? null : imagePathArg.Trim(),
     Assemblies = ["Jellyfin.Plugin.Podcast.dll", "TagLibSharp.dll"],
   };
 
@@ -152,6 +157,7 @@ pluginEntry.Description = metadata.Description;
 pluginEntry.Overview = metadata.Overview;
 pluginEntry.Owner = metadata.Owner;
 pluginEntry.Category = metadata.Category;
+pluginEntry.ImageUrl = string.IsNullOrWhiteSpace(metadata.ImageUrl) ? null : metadata.ImageUrl;
 
 pluginEntry.Versions.RemoveAll(v => string.Equals(v.Version, normalizedVersion, StringComparison.OrdinalIgnoreCase));
 pluginEntry.Versions.Insert(
@@ -301,6 +307,7 @@ static BuildMetadata ParseBuildYaml(string[] lines)
     TargetAbi: values.GetValueOrDefault("targetAbi", "12.0.0.0"),
     Owner: values.GetValueOrDefault("owner", string.Empty),
     Category: values.GetValueOrDefault("category", "General"),
+    ImageUrl: values.GetValueOrDefault("imageUrl", string.Empty),
     Description: values.GetValueOrDefault("description", string.Empty),
     Overview: values.GetValueOrDefault("overview", string.Empty),
     Changelog: changelogBuilder.ToString()
@@ -322,6 +329,7 @@ internal sealed record BuildMetadata(
   string TargetAbi,
   string Owner,
   string Category,
+  string ImageUrl,
   string Description,
   string Overview,
   string Changelog
@@ -341,6 +349,7 @@ internal sealed class PluginMeta
   public string Changelog { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
   public bool AutoUpdate { get; set; } = true;
+  public string? ImagePath { get; set; }
   public List<string> Assemblies { get; set; } = [];
 }
 
@@ -352,6 +361,7 @@ internal sealed class ManifestPlugin
   public string Overview { get; set; } = string.Empty;
   public string Owner { get; set; } = string.Empty;
   public string Category { get; set; } = string.Empty;
+  public string? ImageUrl { get; set; }
   public List<ManifestVersion> Versions { get; set; } = [];
 }
 

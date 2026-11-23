@@ -6,7 +6,11 @@ owner: "StevanFreeborn"
 description: "Universal podcast support for Jellyfin via RSS/Atom feeds with native audio downloads and metadata tagging"
 overview: "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries."
 category: "General"
+imageUrl: "https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/assets/logo.png"
 changelog: |
+  ## 2.0.2
+  - Add JellyPodcast plugin logo for Jellyfin Catalog and My Plugins views
+
   ## 2.0.1
   - Target .NET 10.0 and Jellyfin 12.0.0.0 ABI baseline to fix NotSupported status on Jellyfin 12.4.x
   - Rename plugin display name to JellyPodcast
