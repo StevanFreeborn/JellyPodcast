@@ -6,6 +6,15 @@
     "overview": "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries.",
     "owner": "StevanFreeborn",
     "category": "General",
-    "versions": []
+    "versions": [
+      {
+        "version": "2.0.0.0",
+        "changelog": "- Rewrite plugin as a native audio downloader and metadata tagger\n- Stream audio enclosures (.mp3, .m4a, .aac, .ogg, .opus) atomically to disk\n- Embed ID3v2/Vorbis/MP4 metadata and cover artwork using TagLibSharp\n- Track downloaded episodes deterministically in .podcast_state.json\n- Support Jellyfin Books (recommended for resume) and Music libraries\n- Add OPML 2.0 import and export for Pocket Casts and podcast client migrations\n- Automatically queue Jellyfin library scans when episodes are added or removed\n- Fix per-feed auto-cleanup override (Use global / Enabled / Disabled)\n- Add orphaned feed directory cleanup endpoint and automated xUnit test suite",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/StevanFreeborn/JellyPodcast/releases/download/v2.0.0/jellyfin-plugin-podcast_2.0.0.0.zip",
+        "checksum": "e90a2dcda8fcdf8e5963372fcff0d828",
+        "timestamp": "2026-11-23T22:01:14Z"
+      }
+    ]
   }
 ]
