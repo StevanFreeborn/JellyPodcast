@@ -1,12 +1,20 @@
 [
   {
     "guid": "a3af35b9-8c3f-4349-8fcb-18561540fbfc",
-    "name": "Podcast",
+    "name": "JellyPodcast",
     "description": "Universal podcast support for Jellyfin via RSS/Atom feeds with native audio downloads and metadata tagging",
     "overview": "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries.",
     "owner": "StevanFreeborn",
     "category": "General",
     "versions": [
+      {
+        "version": "2.0.1.0",
+        "changelog": "- Target .NET 10.0 and Jellyfin 12.0.0.0 ABI baseline to fix NotSupported status on Jellyfin 12.4.x\n- Rename plugin display name to JellyPodcast\n- Include assemblies, changelog, and autoUpdate metadata in meta.json",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/StevanFreeborn/JellyPodcast/releases/download/v2.0.1/jellyfin-plugin-podcast_2.0.1.0.zip",
+        "checksum": "076f679eb3af3d842b9436c47cff6486",
+        "timestamp": "2026-11-23T22:20:21Z"
+      },
       {
         "version": "2.0.0.0",
         "changelog": "- Rewrite plugin as a native audio downloader and metadata tagger\n- Stream audio enclosures (.mp3, .m4a, .aac, .ogg, .opus) atomically to disk\n- Embed ID3v2/Vorbis/MP4 metadata and cover artwork using TagLibSharp\n- Track downloaded episodes deterministically in .podcast_state.json\n- Support Jellyfin Books (recommended for resume) and Music libraries\n- Add OPML 2.0 import and export for Pocket Casts and podcast client migrations\n- Automatically queue Jellyfin library scans when episodes are added or removed\n- Fix per-feed auto-cleanup override (Use global / Enabled / Disabled)\n- Add orphaned feed directory cleanup endpoint and automated xUnit test suite",
