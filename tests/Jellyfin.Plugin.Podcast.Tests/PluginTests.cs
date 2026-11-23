@@ -37,12 +37,12 @@ public sealed class PluginTests : IDisposable
 
     var plugin = new Plugin(pathsMock.Object, xmlMock.Object);
 
-    Assert.Equal("Podcast", plugin.Name);
+    Assert.Equal("JellyPodcast", plugin.Name);
     Assert.Equal(Guid.Parse("a3af35b9-8c3f-4349-8fcb-18561540fbfc"), plugin.Id);
     Assert.Same(plugin, Plugin.Instance);
 
     var page = Assert.Single(plugin.GetPages());
-    Assert.Equal("Podcast", page.Name);
+    Assert.Equal("JellyPodcast", page.Name);
     Assert.Equal("Jellyfin.Plugin.Podcast.Configuration.configPage.html", page.EmbeddedResourcePath);
   }
 }

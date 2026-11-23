@@ -292,7 +292,7 @@ public partial class PodcastFeedParser(IHttpClientFactory httpClientFactory, ILo
       }
 
       startIndex += feedUrlMarker.Length;
-      var endIndex = htmlContent.IndexOf('"', startIndex, StringComparison.Ordinal);
+      var endIndex = htmlContent.IndexOf('"', startIndex);
 
       if (endIndex is -1)
       {

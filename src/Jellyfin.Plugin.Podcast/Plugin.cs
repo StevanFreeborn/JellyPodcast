@@ -24,7 +24,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
   }
 
   /// <inheritdoc />
-  public override string Name => "Podcast";
+  public override string Name => "JellyPodcast";
 
   /// <inheritdoc />
   public override Guid Id => Guid.Parse("a3af35b9-8c3f-4349-8fcb-18561540fbfc");

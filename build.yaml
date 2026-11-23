@@ -1,12 +1,17 @@
 ---
-name: "Podcast"
+name: "JellyPodcast"
 guid: "a3af35b9-8c3f-4349-8fcb-18561540fbfc"
-targetAbi: "12.4.0.0"
+targetAbi: "12.0.0.0"
 owner: "StevanFreeborn"
 description: "Universal podcast support for Jellyfin via RSS/Atom feeds with native audio downloads and metadata tagging"
 overview: "Add any podcast to Jellyfin using RSS, Atom, or Apple Podcasts URLs. Automatically downloads audio episodes directly to disk, embeds rich ID3/MP4/Vorbis tags and cover art via TagLibSharp, and organizes folders for Jellyfin Books or Music libraries."
 category: "General"
 changelog: |
+  ## 2.0.1
+  - Target .NET 10.0 and Jellyfin 12.0.0.0 ABI baseline to fix NotSupported status on Jellyfin 12.4.x
+  - Rename plugin display name to JellyPodcast
+  - Include assemblies, changelog, and autoUpdate metadata in meta.json
+
   ## 2.0.0
   - Rewrite plugin as a native audio downloader and metadata tagger
   - Stream audio enclosures (.mp3, .m4a, .aac, .ogg, .opus) atomically to disk
