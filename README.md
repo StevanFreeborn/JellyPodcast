@@ -73,25 +73,32 @@ Copy `dist/Jellyfin.Plugin.Podcast.dll` and `dist/TagLibSharp.dll` to your Jelly
     ├── cover.jpg
     ├── .podcast_state.json
     ├── 2026-11-20 - Episode Title One.mp3
-    └── 2026-11-23 - Episode Title Two.m4a
+    ├── 2026-11-20 - Episode Title One.jpg
+    ├── 2026-11-23 - Episode Title Two.m4a
+    └── 2026-11-23 - Episode Title Two.png
 ```
 
 ## Configuration
 
-| Setting                  | Description                                                                  | Default                 |
-|--------------------------|------------------------------------------------------------------------------|-------------------------|
-| Library Path             | Directory where podcast folders, audio files, and `cover.jpg` are stored     | `/config/data/podcasts` |
-| Download Cover Art       | Download `cover.jpg` and embed cover art into audio metadata tags            | `true`                  |
-| Max Episodes Per Podcast | Maximum number of episodes retained per feed                                 | `50`                    |
-| Enable Auto Cleanup      | Delete episodes older than the configured retention period                   | `false`                 |
-| Days to Keep Episodes    | Retention period in days when auto cleanup is enabled (overridable per feed) | `30`                    |
+| Setting                       | Description                                                                           | Default                 |
+|-------------------------------|---------------------------------------------------------------------------------------|-------------------------|
+| Library Path                  | Directory where podcast folders, audio files, and `cover.jpg` are stored              | `/config/data/podcasts` |
+| Download Cover Art            | Download `cover.jpg` and episode sidecars, and embed cover art into audio tags        | `true`                  |
+| Max Episodes Per Podcast      | Maximum number of episodes retained per feed                                          | `50`                    |
+| Enable Auto Cleanup           | Delete episodes older than the configured retention period                            | `false`                 |
+| Days to Keep Episodes         | Retention period in days when auto cleanup is enabled (overridable per feed)          | `30`                    |
+| Skip Deleted Episodes         | Remember episodes deleted in Jellyfin so they are not re-downloaded                   | `false`                 |
+| Auto-Delete Played Episodes   | Delete non-favorited episodes after completion/marking played (overridable per feed)  | `false`                 |
+| Played Episode Delay (Hours)  | Hours to wait after playback finishes before removing played episodes                  | `24`                    |
+| Played Episode Cleanup Rule   | Whether all users with access or any user must finish an episode (`AllUsers`/`AnyUser`) | `AllUsers`            |
 
 ### Migration & Maintenance Actions
 
 - **Import OPML** (`POST /Podcast/ImportOpml`): Parses an `.opml` subscription export (e.g., from Pocket Casts), deduplicates against current feeds, and stages new entries for review before saving.
 - **Export OPML** (`GET /Podcast/ExportOpml`): Downloads your saved podcast subscriptions as `jellyfin-podcasts.opml`.
-- **Clean Up All Episodes** (`POST /Podcast/Cleanup`): Deletes downloaded audio files and `.podcast_state.json` while keeping `cover.jpg` for configured feeds, and removes directories for feeds no longer in configuration.
+- **Clean Up All Episodes** (`POST /Podcast/Cleanup`): Deletes downloaded audio files, episode sidecar artwork, and `.podcast_state.json` while keeping `cover.jpg` for configured feeds, and removes directories for feeds no longer in configuration.
 - **Clean Up Removed Feeds** (`POST /Podcast/CleanupOrphans`): Removes only directories and files belonging to feeds removed from configuration.
+- **Reset Episode History** (`POST /Podcast/ResetDismissed`): Clears dismissed episode tombstones across all feeds so skipped episodes become eligible for download again without removing existing files.
 
 ## Troubleshooting
 

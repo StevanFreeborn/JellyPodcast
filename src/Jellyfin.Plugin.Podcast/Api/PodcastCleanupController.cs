@@ -29,6 +29,17 @@ public class CleanupResult
 }
 
 /// <summary>
+/// Result payload returned by the reset dismissed episode history endpoint.
+/// </summary>
+public class ResetDismissedResult
+{
+  /// <summary>
+  /// Gets or sets the total number of dismissed episode records cleared.
+  /// </summary>
+  public int EpisodesCleared { get; set; }
+}
+
+/// <summary>
 /// Controller for podcast maintenance and cleanup operations.
 /// </summary>
 [ApiController]
@@ -220,6 +231,52 @@ public partial class PodcastCleanupController : ControllerBase
     }
   }
 
+  /// <summary>
+  /// Clears dismissed episode tombstones across all podcast folders so deleted or played episodes can be downloaded again.
+  /// </summary>
+  /// <returns>A <see cref="ResetDismissedResult"/> summary on success.</returns>
+  [HttpPost("ResetDismissed")]
+  [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Controller boundary logs unexpected filesystem errors and returns HTTP 500.")]
+  public IActionResult ResetDismissedHistory()
+  {
+    try
+    {
+      LogStartingResetDismissed(_logger);
+
+      var config = _configProvider();
+
+      if (config is null)
+      {
+        LogConfigNull(_logger);
+        return StatusCode(500, "Plugin configuration not available");
+      }
+
+      var libraryPath = config.LibraryPath;
+
+      if (string.IsNullOrWhiteSpace(libraryPath) || Directory.Exists(libraryPath) is false)
+      {
+        LogLibraryPathMissing(_logger, libraryPath);
+        return NotFound("Library path not found");
+      }
+
+      var episodesCleared = 0;
+
+      foreach (var podcastDir in Directory.GetDirectories(libraryPath))
+      {
+        episodesCleared += _stateStore.ClearDismissedEpisodes(podcastDir);
+      }
+
+      LogResetDismissedCompleted(_logger, episodesCleared);
+
+      return Ok(new ResetDismissedResult { EpisodesCleared = episodesCleared });
+    }
+    catch (Exception ex)
+    {
+      LogResetDismissedError(_logger, ex);
+      return StatusCode(500, "Reset dismissed history failed");
+    }
+  }
+
   private bool BelongsToConfiguredFeed(string podcastDir, PluginConfiguration config)
   {
     var state = _stateStore.Load(podcastDir);
@@ -268,4 +325,13 @@ public partial class PodcastCleanupController : ControllerBase
 
   [LoggerMessage(Level = LogLevel.Error, Message = "Error during orphaned feed cleanup")]
   private static partial void LogOrphanCleanupError(ILogger logger, Exception exception);
+
+  [LoggerMessage(Level = LogLevel.Information, Message = "Clearing dismissed episode history")]
+  private static partial void LogStartingResetDismissed(ILogger logger);
+
+  [LoggerMessage(Level = LogLevel.Information, Message = "Cleared {Count} dismissed episode records")]
+  private static partial void LogResetDismissedCompleted(ILogger logger, int count);
+
+  [LoggerMessage(Level = LogLevel.Error, Message = "Error clearing dismissed episode history")]
+  private static partial void LogResetDismissedError(ILogger logger, Exception exception);
 }

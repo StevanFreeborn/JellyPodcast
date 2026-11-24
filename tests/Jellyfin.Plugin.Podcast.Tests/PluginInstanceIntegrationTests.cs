@@ -3,9 +3,13 @@ using Jellyfin.Plugin.Podcast.Configuration;
 using Jellyfin.Plugin.Podcast.Services;
 
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Serialization;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Moq;
@@ -101,6 +105,53 @@ public sealed class PluginInstanceIntegrationTests : IDisposable
 
     var fileResult = Assert.IsType<FileContentResult>(controller.ExportOpml());
     Assert.Equal("jellyfin-podcasts.opml", fileResult.FileDownloadName);
+  }
+
+  [Fact]
+  public void PluginServiceRegistrator_RegistersPodcastLifecycleMonitor()
+  {
+    var services = new ServiceCollection();
+    var registrator = new PluginServiceRegistrator();
+
+    registrator.RegisterServices(services, new Mock<IServerApplicationHost>().Object);
+
+    Assert.Contains(
+      services,
+      sd => sd.ServiceType == typeof(IHostedService) && sd.ImplementationType == typeof(PodcastLifecycleMonitor)
+    );
+  }
+
+  [Fact]
+  public async Task PodcastLifecycleMonitor_PublicConstructor_ReadsPluginInstance()
+  {
+    var libraryMock = new Mock<ILibraryManager>();
+    var userDataMock = new Mock<IUserDataManager>();
+    var monitor = new PodcastLifecycleMonitor(
+      libraryMock.Object,
+      userDataMock.Object,
+      NullLogger<PodcastLifecycleMonitor>.Instance
+    );
+
+    var showDir = Path.Combine(_tempDir, "Public Show");
+    Directory.CreateDirectory(showDir);
+    var stateStore = new PodcastStateStore();
+    stateStore.RecordDownloadedEpisode(showDir, "ep-pub", "ep.mp3");
+
+    var plugin = CreateTestPlugin(_tempDir);
+    plugin.UpdateConfiguration(new PluginConfiguration { LibraryPath = _tempDir, SkipDeletedEpisodes = true });
+
+    await monitor.StartAsync(TestContext.Current.CancellationToken);
+    libraryMock.Raise(
+      m => m.ItemRemoved += null,
+      libraryMock.Object,
+      new ItemChangeEventArgs
+      {
+        Item = new MediaBrowser.Controller.Entities.Audio.Audio { Path = Path.Combine(showDir, "ep.mp3") },
+      }
+    );
+    await monitor.StopAsync(TestContext.Current.CancellationToken);
+
+    Assert.True(stateStore.IsEpisodeDismissed(showDir, "ep-pub", includeUserDeleted: true));
   }
 
   private static Plugin CreateTestPlugin(string configDir)

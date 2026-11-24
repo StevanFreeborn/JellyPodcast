@@ -5,6 +5,22 @@ using MediaBrowser.Model.Plugins;
 namespace Jellyfin.Plugin.Podcast.Configuration;
 
 /// <summary>
+/// Controls which users must finish or mark an episode as played before automatic played-episode removal triggers.
+/// </summary>
+public enum PlayedEpisodeCleanupScope
+{
+  /// <summary>
+  /// Require all enabled users with library access to have played the episode.
+  /// </summary>
+  AllUsers = 0,
+
+  /// <summary>
+  /// Remove the episode once any user with library access has played it.
+  /// </summary>
+  AnyUser = 1,
+}
+
+/// <summary>
 /// Plugin configuration for the Podcast plugin.
 /// </summary>
 public class PluginConfiguration : BasePluginConfiguration
@@ -40,6 +56,26 @@ public class PluginConfiguration : BasePluginConfiguration
   /// Gets or sets a value indicating whether to download and embed cover artwork.
   /// </summary>
   public bool DownloadThumbnails { get; set; } = true;
+
+  /// <summary>
+  /// Gets or sets a value indicating whether episodes deleted via the Jellyfin UI are skipped on future refreshes.
+  /// </summary>
+  public bool SkipDeletedEpisodes { get; set; }
+
+  /// <summary>
+  /// Gets or sets a value indicating whether played episodes are automatically deleted after the retention delay.
+  /// </summary>
+  public bool AutoDeletePlayedEpisodes { get; set; }
+
+  /// <summary>
+  /// Gets or sets the grace period in hours after playback before played episodes are deleted.
+  /// </summary>
+  public int PlayedEpisodeRetentionHours { get; set; } = 24;
+
+  /// <summary>
+  /// Gets or sets whether all users or any user must finish an episode before auto-deletion.
+  /// </summary>
+  public PlayedEpisodeCleanupScope PlayedCleanupScope { get; set; } = PlayedEpisodeCleanupScope.AllUsers;
 }
 
 /// <summary>
@@ -77,4 +113,9 @@ public class PodcastFeed
   /// Gets or sets the number of days to keep episodes for this feed (null = use global setting).
   /// </summary>
   public int? DaysToKeepEpisodes { get; set; }
+
+  /// <summary>
+  /// Gets or sets a value indicating whether played episodes are auto-deleted for this feed (null = use global setting).
+  /// </summary>
+  public bool? AutoDeletePlayedEpisodes { get; set; }
 }

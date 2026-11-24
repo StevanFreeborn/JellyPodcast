@@ -90,6 +90,64 @@
               />
               <div class="fieldDescription">Number of days to keep episodes before cleanup (default: 30)</div>
             </div>
+
+            <div class="checkboxContainer checkboxContainer-withDescription">
+              <label>
+                <input
+                  id="skipDeletedEpisodes"
+                  name="skipDeletedEpisodes"
+                  type="checkbox"
+                  is="emby-checkbox"
+                />
+                <span>Skip Episodes Deleted in Jellyfin</span>
+              </label>
+              <div class="fieldDescription">Remember episodes removed via the Jellyfin UI so they are not re-downloaded</div>
+            </div>
+
+            <div class="checkboxContainer checkboxContainer-withDescription">
+              <label>
+                <input
+                  id="autoDeletePlayedEpisodes"
+                  name="autoDeletePlayedEpisodes"
+                  type="checkbox"
+                  is="emby-checkbox"
+                />
+                <span>Auto-Delete Played Episodes</span>
+              </label>
+              <div class="fieldDescription">
+                Automatically remove episodes once finished or marked as played (favorited episodes are always kept)
+              </div>
+            </div>
+
+            <div class="inputContainer">
+              <label for="playedEpisodeRetentionHours">Played Episode Delay (Hours):</label>
+              <input
+                id="playedEpisodeRetentionHours"
+                name="playedEpisodeRetentionHours"
+                type="number"
+                is="emby-input"
+                min="0"
+                max="720"
+              />
+              <div class="fieldDescription">
+                Hours to wait after an episode is played before deleting it (0 = delete on next refresh, default: 24)
+              </div>
+            </div>
+
+            <div class="selectContainer">
+              <label for="playedCleanupScope">Played Episode Cleanup Rule:</label>
+              <select
+                id="playedCleanupScope"
+                name="playedCleanupScope"
+                is="emby-select"
+              >
+                <option value="AllUsers">All users with library access</option>
+                <option value="AnyUser">Any user</option>
+              </select>
+              <div class="fieldDescription">
+                Choose whether every user on the server or any single user must finish an episode before auto-deletion
+              </div>
+            </div>
           </div>
 
           <div class="verticalSection">
@@ -128,6 +186,23 @@
             >
               Deletes directories and audio files belonging to podcast feeds that have been removed from your
               configuration.
+            </div>
+
+            <button
+              type="button"
+              id="resetDismissedButton"
+              is="emby-button"
+              class="raised block"
+              style="margin-top: 1em;"
+            >
+              <span>Reset Episode History</span>
+            </button>
+            <div
+              class="fieldDescription"
+              style="margin-top: 0.5em;"
+            >
+              Clears remembered deleted/played episode history so skipped episodes can be downloaded again on the next
+              refresh without removing existing audio files.
             </div>
           </div>
 
@@ -226,6 +301,18 @@
           document.getElementById('maxEpisodesPerPodcast').value = config.MaxEpisodesPerPodcast || 50;
           document.getElementById('enableAutoCleanup').checked = config.EnableAutoCleanup || false;
           document.getElementById('daysToKeepEpisodes').value = config.DaysToKeepEpisodes || 30;
+          document.getElementById('skipDeletedEpisodes').checked = config.SkipDeletedEpisodes || false;
+          document.getElementById('autoDeletePlayedEpisodes').checked = config.AutoDeletePlayedEpisodes || false;
+          document.getElementById('playedEpisodeRetentionHours').value =
+            typeof config.PlayedEpisodeRetentionHours === 'number' && !isNaN(config.PlayedEpisodeRetentionHours)
+              ? config.PlayedEpisodeRetentionHours
+              : 24;
+          var scopeValue = config.PlayedCleanupScope;
+          if (scopeValue === 1 || scopeValue === '1' || scopeValue === 'AnyUser') {
+            document.getElementById('playedCleanupScope').value = 'AnyUser';
+          } else {
+            document.getElementById('playedCleanupScope').value = 'AllUsers';
+          }
 
           // Load podcast feeds
           PodcastConfig.loadFeeds(config.PodcastFeeds || []);
@@ -244,6 +331,12 @@
           config.MaxEpisodesPerPodcast = parseInt(document.getElementById('maxEpisodesPerPodcast').value, 10) || 50;
           config.EnableAutoCleanup = document.getElementById('enableAutoCleanup').checked;
           config.DaysToKeepEpisodes = parseInt(document.getElementById('daysToKeepEpisodes').value, 10) || 30;
+          config.SkipDeletedEpisodes = document.getElementById('skipDeletedEpisodes').checked;
+          config.AutoDeletePlayedEpisodes = document.getElementById('autoDeletePlayedEpisodes').checked;
+          var parsedRetentionHours = parseInt(document.getElementById('playedEpisodeRetentionHours').value, 10);
+          config.PlayedEpisodeRetentionHours =
+            isNaN(parsedRetentionHours) || parsedRetentionHours < 0 ? 24 : parsedRetentionHours;
+          config.PlayedCleanupScope = document.getElementById('playedCleanupScope').value || 'AllUsers';
 
           // Collect podcast feeds
           config.PodcastFeeds = PodcastConfig.collectFeeds();
@@ -380,6 +473,27 @@
           }).catch(function (error) {
             Dashboard.hideLoadingMsg();
             Dashboard.alert('Cleanup failed: ' + (error.message || 'Unknown error'));
+          });
+        }
+      });
+
+      document.getElementById('resetDismissedButton').addEventListener('click', function () {
+        if (confirm('Clear remembered deleted and played episode history?\n\nPreviously skipped episodes that are still in RSS feeds will be eligible for download on the next refresh.')) {
+          Dashboard.showLoadingMsg();
+
+          ApiClient.fetch({
+            url: ApiClient.getUrl('/Podcast/ResetDismissed'),
+            type: 'POST',
+            dataType: 'json'
+          }).then(function (response) {
+            Dashboard.hideLoadingMsg();
+            var cleared = (response && (response.EpisodesCleared !== undefined ? response.EpisodesCleared : response.episodesCleared)) || 0;
+            Dashboard.alert('Episode history reset complete. Cleared ' + cleared + ' remembered episode(s).');
+          }).catch(function (error) {
+            Dashboard.hideLoadingMsg();
+            PodcastConfig.getErrorMessage(error, 'Unknown error').then(function (message) {
+              Dashboard.alert('Failed to reset episode history: ' + message);
+            });
           });
         }
       });
@@ -526,6 +640,32 @@
         advancedContainer.appendChild(feedCleanupContainer);
         advancedContainer.appendChild(feedRetentionContainer);
 
+        // Per-feed played episode auto-delete 3-state override
+        var feedPlayedCleanupContainer = document.createElement('div');
+        feedPlayedCleanupContainer.className = 'selectContainer';
+        feedPlayedCleanupContainer.style.marginTop = '0.5em';
+        var feedPlayedCleanupLabel = document.createElement('label');
+        feedPlayedCleanupLabel.textContent = 'Auto-Delete Played Override:';
+        var feedPlayedCleanupSelect = document.createElement('select');
+        feedPlayedCleanupSelect.className = 'feedAutoDeletePlayedEpisodes';
+        feedPlayedCleanupSelect.setAttribute('is', 'emby-select');
+        [
+          { value: '', text: 'Use global setting' },
+          { value: 'true', text: 'Enabled' },
+          { value: 'false', text: 'Disabled' }
+        ].forEach(function (opt) {
+          var option = document.createElement('option');
+          option.value = opt.value;
+          option.textContent = opt.text;
+          feedPlayedCleanupSelect.appendChild(option);
+        });
+        feedPlayedCleanupSelect.value = feed.AutoDeletePlayedEpisodes === true
+          ? 'true'
+          : (feed.AutoDeletePlayedEpisodes === false ? 'false' : '');
+        feedPlayedCleanupContainer.appendChild(feedPlayedCleanupLabel);
+        feedPlayedCleanupContainer.appendChild(feedPlayedCleanupSelect);
+        advancedContainer.appendChild(feedPlayedCleanupContainer);
+
         // Toggle advanced settings
         advancedToggle.addEventListener('click', function () {
           var isVisible = advancedContainer.style.display !== 'none';
@@ -602,7 +742,8 @@
             CustomName: useTitles && title ? title : '',
             Enabled: true,
             EnableAutoCleanup: null,
-            DaysToKeepEpisodes: null
+            DaysToKeepEpisodes: null,
+            AutoDeletePlayedEpisodes: null
           });
           added++;
         });
@@ -619,6 +760,7 @@
           if (url) {
             var daysValue = row.querySelector('.feedDaysToKeepEpisodes').value.trim();
             var cleanupOverride = row.querySelector('.feedEnableAutoCleanup').value;
+            var playedOverride = row.querySelector('.feedAutoDeletePlayedEpisodes').value;
 
             feeds.push({
               Id: row.getAttribute('data-feed-id'),
@@ -626,7 +768,8 @@
               CustomName: row.querySelector('.feedCustomName').value.trim(),
               Enabled: row.querySelector('.feedEnabled').checked,
               EnableAutoCleanup: cleanupOverride === 'true' ? true : (cleanupOverride === 'false' ? false : null),
-              DaysToKeepEpisodes: daysValue ? parseInt(daysValue, 10) : null
+              DaysToKeepEpisodes: daysValue ? parseInt(daysValue, 10) : null,
+              AutoDeletePlayedEpisodes: playedOverride === 'true' ? true : (playedOverride === 'false' ? false : null)
             });
           }
         });

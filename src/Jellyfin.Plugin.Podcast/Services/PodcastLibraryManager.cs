@@ -45,13 +45,15 @@ public sealed class LibraryRefreshResult
 /// <param name="stateStore">Episode state persistence store.</param>
 /// <param name="logger">Logger instance.</param>
 /// <param name="timeProvider">Optional time provider; defaults to <see cref="TimeProvider.System"/>.</param>
+/// <param name="playedEpisodeEvaluator">Optional evaluator used to remove played episodes during refresh.</param>
 public partial class PodcastLibraryManager(
   IPodcastFeedParser feedParser,
   IPodcastMediaDownloader mediaDownloader,
   IAudioMetadataTagger metadataTagger,
   IPodcastStateStore stateStore,
   ILogger<PodcastLibraryManager> logger,
-  TimeProvider? timeProvider = null
+  TimeProvider? timeProvider = null,
+  IPodcastPlayedEpisodeEvaluator? playedEpisodeEvaluator = null
 )
 {
   private readonly IPodcastFeedParser _feedParser = feedParser;
@@ -60,6 +62,7 @@ public partial class PodcastLibraryManager(
   private readonly IPodcastStateStore _stateStore = stateStore;
   private readonly ILogger<PodcastLibraryManager> _logger = logger;
   private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+  private readonly IPodcastPlayedEpisodeEvaluator? _playedEpisodeEvaluator = playedEpisodeEvaluator;
 
   /// <summary>
   /// Refreshes the podcast library using the active plugin configuration.
@@ -254,6 +257,13 @@ public partial class PodcastLibraryManager(
         ? episode.Guid
         : episode.MediaUrl;
 
+      if (_stateStore.IsEpisodeDismissed(podcastDir, episodeGuid, config.SkipDeletedEpisodes))
+      {
+        LogSkippingDismissed(_logger, episode.Title);
+        ReportEpisodeProgress(progress, sliceStart, sliceEnd, index + 1, totalEpisodes);
+        continue;
+      }
+
       if (_stateStore.IsEpisodeDownloaded(podcastDir, episodeGuid))
       {
         if (
@@ -322,6 +332,18 @@ public partial class PodcastLibraryManager(
     if (config.MaxEpisodesPerPodcast is > 0)
     {
       deletedCount += PruneExcessEpisodes(podcastDir, podcastTitle, config.MaxEpisodesPerPodcast);
+    }
+
+    var autoDeletePlayed = feedConfig.AutoDeletePlayedEpisodes ?? config.AutoDeletePlayedEpisodes;
+
+    if (autoDeletePlayed && _playedEpisodeEvaluator is not null)
+    {
+      deletedCount += PrunePlayedEpisodes(
+        podcastDir,
+        podcastTitle,
+        config.PlayedCleanupScope,
+        config.PlayedEpisodeRetentionHours
+      );
     }
 
     return new LibraryRefreshResult
@@ -562,6 +584,85 @@ public partial class PodcastLibraryManager(
     return deletedCount;
   }
 
+  private int PrunePlayedEpisodes(
+    string podcastDir,
+    string podcastTitle,
+    PlayedEpisodeCleanupScope scope,
+    int retentionHours
+  )
+  {
+    if (Directory.Exists(podcastDir) is false || _playedEpisodeEvaluator is null)
+    {
+      return 0;
+    }
+
+    var state = _stateStore.Load(podcastDir);
+
+    if (state.Episodes.Count is 0)
+    {
+      return 0;
+    }
+
+    var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+    var stateModified = false;
+    var deletedCount = 0;
+
+    foreach (var (guid, entry) in state.Episodes.ToList())
+    {
+      if (string.IsNullOrWhiteSpace(entry.FileName))
+      {
+        continue;
+      }
+
+      var filePath = Path.Combine(podcastDir, entry.FileName);
+
+      if (File.Exists(filePath) is false)
+      {
+        continue;
+      }
+
+      var evaluation = _playedEpisodeEvaluator.Evaluate(filePath, entry, scope, retentionHours, nowUtc);
+
+      if (evaluation.ObservedPlayedByUsersUtc.Count is > 0)
+      {
+        entry.PlayedByUsersUtc ??= [];
+
+        foreach (var (userId, observedUtc) in evaluation.ObservedPlayedByUsersUtc)
+        {
+          entry.PlayedByUsersUtc[userId] = observedUtc;
+        }
+
+        stateModified = true;
+      }
+
+      if (evaluation.ShouldDelete && DeleteFileIfExists(filePath))
+      {
+        DeleteEpisodeSidecarImages(filePath);
+        state.Episodes.Remove(guid);
+        state.DismissedEpisodes[guid] = new DismissedEpisodeState
+        {
+          Guid = guid,
+          Reason = DismissedEpisodeReason.Played,
+          DismissedAtUtc = nowUtc,
+        };
+        deletedCount++;
+        stateModified = true;
+      }
+    }
+
+    if (stateModified)
+    {
+      _stateStore.Save(podcastDir, state);
+    }
+
+    if (deletedCount is > 0)
+    {
+      LogPlayedPruned(_logger, deletedCount, podcastTitle);
+    }
+
+    return deletedCount;
+  }
+
   private static void ReportEpisodeProgress(
     IProgress<double>? progress,
     double sliceStart,
@@ -712,7 +813,7 @@ public partial class PodcastLibraryManager(
     }
   }
 
-  private static void DeleteEpisodeSidecarImages(string audioPath, string? keepPath = null)
+  internal static void DeleteEpisodeSidecarImages(string audioPath, string? keepPath = null)
   {
     var directory = Path.GetDirectoryName(audioPath);
     var baseName = Path.GetFileNameWithoutExtension(audioPath);
@@ -779,6 +880,9 @@ public partial class PodcastLibraryManager(
   [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping already downloaded episode: {Title}")]
   private static partial void LogSkippingDownloaded(ILogger logger, string title);
 
+  [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping dismissed episode: {Title}")]
+  private static partial void LogSkippingDismissed(ILogger logger, string title);
+
   [LoggerMessage(Level = LogLevel.Error, Message = "Error downloading or tagging episode: {Title}")]
   private static partial void LogEpisodeError(ILogger logger, string title, Exception exception);
 
@@ -793,4 +897,7 @@ public partial class PodcastLibraryManager(
 
   [LoggerMessage(Level = LogLevel.Information, Message = "Pruned {Count} oldest episodes from {Podcast} (limit: {Limit})")]
   private static partial void LogExcessPruned(ILogger logger, int count, string podcast, int limit);
+
+  [LoggerMessage(Level = LogLevel.Information, Message = "Auto-cleanup removed {Count} played episodes from {Podcast}")]
+  private static partial void LogPlayedPruned(ILogger logger, int count, string podcast);
 }

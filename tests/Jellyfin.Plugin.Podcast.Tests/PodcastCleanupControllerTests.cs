@@ -264,4 +264,39 @@ public sealed class PodcastCleanupControllerTests : IDisposable
     Assert.Equal(0, noopPayload.DirectoriesDeleted);
     noopLibraryManagerMock.Verify(l => l.QueueLibraryScan(), Times.Never);
   }
+
+  [Fact]
+  public void ResetDismissedHistory_ClearsTombstonesAndHandlesErrors()
+  {
+    var showA = Path.Combine(_libraryPath, "Show A");
+    var showB = Path.Combine(_libraryPath, "Show B");
+    Directory.CreateDirectory(showA);
+    Directory.CreateDirectory(showB);
+    _stateStore.RecordDismissedEpisode(showA, "ep-1", DismissedEpisodeReason.UserDeleted);
+    _stateStore.RecordDismissedEpisode(showB, "ep-2", DismissedEpisodeReason.Played);
+
+    var config = new PluginConfiguration { LibraryPath = _libraryPath };
+    var controller = new PodcastCleanupController(NullLogger<PodcastCleanupController>.Instance, () => config, _stateStore);
+
+    var okResult = Assert.IsType<OkObjectResult>(controller.ResetDismissedHistory());
+    var payload = Assert.IsType<ResetDismissedResult>(okResult.Value);
+    Assert.Equal(2, payload.EpisodesCleared);
+    Assert.Empty(_stateStore.Load(showA).DismissedEpisodes);
+    Assert.Empty(_stateStore.Load(showB).DismissedEpisodes);
+
+    var nullController = new PodcastCleanupController(NullLogger<PodcastCleanupController>.Instance, () => null);
+    Assert.Equal(500, Assert.IsType<ObjectResult>(nullController.ResetDismissedHistory()).StatusCode);
+
+    var missingController = new PodcastCleanupController(
+      NullLogger<PodcastCleanupController>.Instance,
+      () => new PluginConfiguration { LibraryPath = Path.Combine(_libraryPath, "missing") }
+    );
+    Assert.IsType<NotFoundObjectResult>(missingController.ResetDismissedHistory());
+
+    var throwingController = new PodcastCleanupController(
+      NullLogger<PodcastCleanupController>.Instance,
+      () => throw new InvalidOperationException("boom")
+    );
+    Assert.Equal(500, Assert.IsType<ObjectResult>(throwingController.ResetDismissedHistory()).StatusCode);
+  }
 }
