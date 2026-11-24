@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/StevanFreeborn/JellyPodcast/main/assets/logo.png",
     "versions": [
       {
+        "version": "2.0.5.0",
+        "changelog": "- Add configurable dismissal tracking to skip episodes deleted via the Jellyfin UI\n- Add configurable multi-user auto-deletion for played episodes with retention delay and Favorite protection\n- Add per-feed Auto-Delete Played override and Reset Episode History maintenance action",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/StevanFreeborn/JellyPodcast/releases/download/v2.0.5/jellyfin-plugin-podcast_2.0.5.0.zip",
+        "checksum": "00e288447d4ed4d4480f4f86dfd7147c",
+        "timestamp": "2026-11-24T13:41:52Z"
+      },
+      {
         "version": "2.0.4.0",
         "changelog": "- Save per-episode sidecar cover art (\u003Cepisode\u003E.\u003Cext\u003E) so Jellyfin Books and Music libraries display episode covers natively without extra library settings\n- Backfill missing episode sidecars for already-downloaded episodes and delete sidecars on prune/cleanup\n- Harden RSS and Atom artwork detection across iTunes, Media RSS, Google Play, Podcasting 2.0, and channel/entry tags",
         "targetAbi": "12.0.0.0",
