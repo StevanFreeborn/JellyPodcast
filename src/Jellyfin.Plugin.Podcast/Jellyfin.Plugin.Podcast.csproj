@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>Jellyfin.Plugin.Podcast</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.Podcast</RootNamespace>
-    <Version>2.0.4</Version>
+    <Version>2.0.5</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>

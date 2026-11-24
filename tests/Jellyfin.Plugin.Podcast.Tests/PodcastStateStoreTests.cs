@@ -150,4 +150,57 @@ public sealed class PodcastStateStoreTests : IDisposable
 
     Assert.False(_store.IsEpisodeDownloaded(_tempDir, "ep-empty-file"));
   }
+
+  [Fact]
+  public void RecordDismissedEpisode_AndIsEpisodeDismissed_RespectReasonAndUserDeletedFlag()
+  {
+    _store.RecordDownloadedEpisode(_tempDir, "ep-user-del", "ep1.mp3");
+    _store.RecordDownloadedEpisode(_tempDir, "ep-played", "ep2.mp3");
+
+    _store.RecordDismissedEpisode(_tempDir, "ep-user-del", DismissedEpisodeReason.UserDeleted);
+    _store.RecordDismissedEpisode(_tempDir, "ep-played", DismissedEpisodeReason.Played);
+
+    var state = _store.Load(_tempDir);
+    Assert.Empty(state.Episodes);
+    Assert.Equal(2, state.DismissedEpisodes.Count);
+
+    Assert.False(_store.IsEpisodeDismissed(_tempDir, "ep-user-del", includeUserDeleted: false));
+    Assert.True(_store.IsEpisodeDismissed(_tempDir, "ep-user-del", includeUserDeleted: true));
+    Assert.True(_store.IsEpisodeDismissed(_tempDir, "ep-played", includeUserDeleted: false));
+    Assert.True(_store.IsEpisodeDismissed(_tempDir, "ep-played", includeUserDeleted: true));
+    Assert.False(_store.IsEpisodeDismissed(_tempDir, "   ", includeUserDeleted: true));
+    Assert.False(_store.IsEpisodeDismissed(_tempDir, "missing", includeUserDeleted: true));
+
+    // Re-downloading clears a previous dismissal tombstone.
+    _store.RecordDownloadedEpisode(_tempDir, "ep-user-del", "ep1.mp3");
+    Assert.False(_store.IsEpisodeDismissed(_tempDir, "ep-user-del", includeUserDeleted: true));
+  }
+
+  [Fact]
+  public void FindEpisodeGuidByFileName_RecordUserPlayedState_AndClearDismissedEpisodes_WorkAsExpected()
+  {
+    _store.RecordDownloadedEpisode(_tempDir, "ep-1", "2026-11-23 - Ep One.mp3");
+
+    Assert.Equal("ep-1", _store.FindEpisodeGuidByFileName(_tempDir, "2026-11-23 - ep one.MP3"));
+    Assert.Null(_store.FindEpisodeGuidByFileName(_tempDir, "missing.mp3"));
+    Assert.Null(_store.FindEpisodeGuidByFileName(_tempDir, "  "));
+
+    var userId = Guid.NewGuid();
+    var playedUtc = new DateTime(2026, 11, 23, 18, 0, 0, DateTimeKind.Utc);
+    Assert.False(_store.RecordUserPlayedState(_tempDir, "unknown-guid", userId, isPlayed: true, playedUtc));
+    Assert.True(_store.RecordUserPlayedState(_tempDir, "ep-1", userId, isPlayed: true, playedUtc));
+    Assert.False(_store.RecordUserPlayedState(_tempDir, "ep-1", userId, isPlayed: true, playedUtc));
+
+    var afterPlay = _store.Load(_tempDir);
+    Assert.Equal(playedUtc, afterPlay.Episodes["ep-1"].PlayedByUsersUtc[userId]);
+
+    Assert.True(_store.RecordUserPlayedState(_tempDir, "ep-1", userId, isPlayed: false));
+    Assert.False(_store.RecordUserPlayedState(_tempDir, "ep-1", userId, isPlayed: false));
+    Assert.Empty(_store.Load(_tempDir).Episodes["ep-1"].PlayedByUsersUtc);
+
+    _store.RecordDismissedEpisode(_tempDir, "ep-1", DismissedEpisodeReason.UserDeleted);
+    Assert.Equal(1, _store.ClearDismissedEpisodes(_tempDir));
+    Assert.Equal(0, _store.ClearDismissedEpisodes(_tempDir));
+    Assert.Empty(_store.Load(_tempDir).DismissedEpisodes);
+  }
 }

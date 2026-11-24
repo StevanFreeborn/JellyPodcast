@@ -18,17 +18,23 @@ namespace Jellyfin.Plugin.Podcast.ScheduledTasks;
 /// <param name="loggerFactory">Logger factory.</param>
 /// <param name="libraryManager">Optional Jellyfin library manager used to queue a library scan when files change.</param>
 /// <param name="timeProvider">Optional time provider; defaults to <see cref="TimeProvider.System"/>.</param>
+/// <param name="userManager">Optional Jellyfin user manager used for played-episode cleanup evaluation.</param>
+/// <param name="userDataManager">Optional Jellyfin user data manager used for played-episode cleanup evaluation.</param>
 public partial class RefreshPodcastLibraryTask(
   IHttpClientFactory httpClientFactory,
   ILoggerFactory loggerFactory,
   ILibraryManager? libraryManager = null,
-  TimeProvider? timeProvider = null
+  TimeProvider? timeProvider = null,
+  IUserManager? userManager = null,
+  IUserDataManager? userDataManager = null
 ) : IScheduledTask
 {
   private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
   private readonly ILoggerFactory _loggerFactory = loggerFactory;
   private readonly ILibraryManager? _libraryManager = libraryManager;
   private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+  private readonly IUserManager? _userManager = userManager;
+  private readonly IUserDataManager? _userDataManager = userDataManager;
 
   /// <inheritdoc />
   public string Name => "Refresh Podcast Library";
@@ -56,13 +62,20 @@ public partial class RefreshPodcastLibraryTask(
       var mediaDownloader = new PodcastMediaDownloader(_httpClientFactory, _loggerFactory.CreateLogger<PodcastMediaDownloader>());
       var metadataTagger = new AudioMetadataTagger();
       var stateStore = new PodcastStateStore(_timeProvider);
+      var playedEvaluator =
+        _libraryManager is not null &&
+        _userManager is not null &&
+        _userDataManager is not null
+          ? new PodcastPlayedEpisodeEvaluator(_libraryManager, _userManager, _userDataManager)
+          : null;
       var libraryManager = new PodcastLibraryManager(
         feedParser,
         mediaDownloader,
         metadataTagger,
         stateStore,
         _loggerFactory.CreateLogger<PodcastLibraryManager>(),
-        _timeProvider
+        _timeProvider,
+        playedEvaluator
       );
 
       var result = await libraryManager.RefreshLibraryAsync(cancellationToken, progress).ConfigureAwait(false);

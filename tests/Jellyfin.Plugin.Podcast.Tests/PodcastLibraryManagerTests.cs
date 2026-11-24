@@ -853,8 +853,150 @@ public sealed class PodcastLibraryManagerTests : IDisposable
     Assert.True(File.Exists(showCoverPath));
   }
 
-  private PodcastLibraryManager CreateManager(IPodcastFeedParser parser, IPodcastMediaDownloader downloader)
-      => new(parser, downloader, _tagger, _stateStore, NullLogger<PodcastLibraryManager>.Instance, _timeProvider);
+  [Fact]
+  public async Task RefreshLibraryAsync_SkipsDismissedEpisodes_RespectingSkipDeletedToggle()
+  {
+    var feed = new PodcastFeed
+    {
+      Id = "feed-dismissed",
+      Url = "https://example.com/dismissed.xml",
+      CustomName = "Dismissed Show",
+      Enabled = true,
+    };
+
+    var parserMock = new Mock<IPodcastFeedParser>();
+    parserMock.Setup(p => p.ParseFeedAsync(feed.Url, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(
+        new PodcastFeedData
+        {
+          Title = "Dismissed Show",
+          Episodes =
+          [
+            new PodcastEpisode
+            {
+              Guid = "ep-user-deleted",
+              Title = "Deleted By User",
+              MediaUrl = "https://example.com/ep1.mp3",
+              MediaType = "audio/mpeg",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-1),
+            },
+            new PodcastEpisode
+            {
+              Guid = "ep-auto-played",
+              Title = "Auto Removed Played",
+              MediaUrl = "https://example.com/ep2.mp3",
+              MediaType = "audio/mpeg",
+              PubDate = FixedUtcNow.UtcDateTime.AddDays(-2),
+            },
+          ],
+        }
+      );
+
+    var podcastDir = Path.Combine(_libraryPath, "Dismissed Show");
+    _stateStore.RecordDismissedEpisode(podcastDir, "ep-user-deleted", DismissedEpisodeReason.UserDeleted);
+    _stateStore.RecordDismissedEpisode(podcastDir, "ep-auto-played", DismissedEpisodeReason.Played);
+
+    var downloaderMock = CreateDownloaderMock(null);
+    var manager = CreateManager(parserMock.Object, downloaderMock.Object);
+
+    var skipConfig = CreateConfig(feed);
+    skipConfig.SkipDeletedEpisodes = true;
+    skipConfig.DownloadThumbnails = false;
+    var firstRun = await manager.RefreshLibraryAsync(skipConfig, TestContext.Current.CancellationToken);
+    Assert.Equal(0, firstRun.EpisodesDownloaded);
+    Assert.False(firstRun.HasChanges);
+    downloaderMock.Verify(d => d.DownloadEpisodeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+    // When SkipDeletedEpisodes is disabled, user-deleted episodes can download again while played tombstones remain skipped.
+    skipConfig.SkipDeletedEpisodes = false;
+    var secondRun = await manager.RefreshLibraryAsync(skipConfig, TestContext.Current.CancellationToken);
+    Assert.Equal(1, secondRun.EpisodesDownloaded);
+    Assert.Single(Directory.GetFiles(podcastDir, "*.mp3"));
+  }
+
+  [Fact]
+  public async Task RefreshLibraryAsync_PrunesPlayedEpisodesWithPerFeedOverride_AndProtectsFavorites()
+  {
+    var podcastDir = Path.Combine(_libraryPath, "Played Prune Show");
+    Directory.CreateDirectory(podcastDir);
+    await File.WriteAllBytesAsync(Path.Combine(podcastDir, PodcastMediaDownloader.CoverFileName), [0xFF, 0xD8], TestContext.Current.CancellationToken);
+
+    var readyAudio = Path.Combine(podcastDir, "2026-11-20 - Ready.mp3");
+    var readySidecar = Path.Combine(podcastDir, "2026-11-20 - Ready.png");
+    var favoriteAudio = Path.Combine(podcastDir, "2026-11-21 - Favorite.mp3");
+    var favoriteSidecar = Path.Combine(podcastDir, "2026-11-21 - Favorite.jpg");
+    var unplayedAudio = Path.Combine(podcastDir, "2026-11-22 - Unplayed.mp3");
+
+    await File.WriteAllBytesAsync(readyAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(readySidecar, [0x89, 0x50], TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(favoriteAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(favoriteSidecar, [0xFF, 0xD8], TestContext.Current.CancellationToken);
+    await File.WriteAllBytesAsync(unplayedAudio, CreateMinimalValidMp3Bytes(), TestContext.Current.CancellationToken);
+
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-ready", Path.GetFileName(readyAudio), FixedUtcNow.UtcDateTime.AddDays(-3));
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-favorite", Path.GetFileName(favoriteAudio), FixedUtcNow.UtcDateTime.AddDays(-2));
+    _stateStore.RecordDownloadedEpisode(podcastDir, "ep-unplayed", Path.GetFileName(unplayedAudio), FixedUtcNow.UtcDateTime.AddDays(-1));
+
+    var feed = new PodcastFeed
+    {
+      Id = "feed-played-prune",
+      Url = "https://example.com/played-prune.xml",
+      CustomName = "Played Prune Show",
+      Enabled = true,
+      AutoDeletePlayedEpisodes = true,
+    };
+
+    var parserMock = new Mock<IPodcastFeedParser>();
+    parserMock.Setup(p => p.ParseFeedAsync(feed.Url, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PodcastFeedData { Title = "Played Prune Show", Episodes = [] });
+
+    var observedUserId = Guid.NewGuid();
+    var evaluatorMock = new Mock<IPodcastPlayedEpisodeEvaluator>();
+    evaluatorMock
+      .Setup(e => e.Evaluate(readyAudio, It.IsAny<PodcastEpisodeState>(), PlayedEpisodeCleanupScope.AnyUser, 24, FixedUtcNow.UtcDateTime))
+      .Returns(new PlayedEpisodeEvaluation { ShouldDelete = true });
+    evaluatorMock
+      .Setup(e => e.Evaluate(favoriteAudio, It.IsAny<PodcastEpisodeState>(), PlayedEpisodeCleanupScope.AnyUser, 24, FixedUtcNow.UtcDateTime))
+      .Returns(new PlayedEpisodeEvaluation { ShouldDelete = false, IsProtectedByFavorite = true });
+    evaluatorMock
+      .Setup(e => e.Evaluate(unplayedAudio, It.IsAny<PodcastEpisodeState>(), PlayedEpisodeCleanupScope.AnyUser, 24, FixedUtcNow.UtcDateTime))
+      .Returns(
+        new PlayedEpisodeEvaluation
+        {
+          ShouldDelete = false,
+          ObservedPlayedByUsersUtc = new Dictionary<Guid, DateTime> { [observedUserId] = FixedUtcNow.UtcDateTime },
+        }
+      );
+
+    var manager = CreateManager(parserMock.Object, CreateDownloaderMock(null).Object, evaluatorMock.Object);
+    var config = CreateConfig(feed);
+    config.AutoDeletePlayedEpisodes = false;
+    config.PlayedCleanupScope = PlayedEpisodeCleanupScope.AnyUser;
+    config.PlayedEpisodeRetentionHours = 24;
+    config.DownloadThumbnails = false;
+
+    var result = await manager.RefreshLibraryAsync(config, TestContext.Current.CancellationToken);
+
+    Assert.Equal(1, result.EpisodesDeleted);
+    Assert.True(result.HasChanges);
+    Assert.False(File.Exists(readyAudio));
+    Assert.False(File.Exists(readySidecar));
+    Assert.True(File.Exists(favoriteAudio));
+    Assert.True(File.Exists(favoriteSidecar));
+    Assert.True(File.Exists(unplayedAudio));
+
+    var state = _stateStore.Load(podcastDir);
+    Assert.False(state.Episodes.ContainsKey("ep-ready"));
+    Assert.True(_stateStore.IsEpisodeDismissed(podcastDir, "ep-ready", includeUserDeleted: false));
+    Assert.Equal(FixedUtcNow.UtcDateTime, state.Episodes["ep-unplayed"].PlayedByUsersUtc[observedUserId]);
+  }
+
+  private PodcastLibraryManager CreateManager(
+    IPodcastFeedParser parser,
+    IPodcastMediaDownloader downloader,
+    IPodcastPlayedEpisodeEvaluator? playedEpisodeEvaluator = null
+  )
+      => new(parser, downloader, _tagger, _stateStore, NullLogger<PodcastLibraryManager>.Instance, _timeProvider, playedEpisodeEvaluator);
 
   private PluginConfiguration CreateConfig(params PodcastFeed[] feeds) => new()
   {
